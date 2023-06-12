@@ -277,12 +277,12 @@ func Open(path string) (*OpfsFile, error) {
 	return &opf, nil
 }
 
-func Utime(path string, t time.Time) error {
+func Utime(path string, mt time.Time, at time.Time) error {
 	var uatime C.struct_timeval
 	var umtime C.struct_timeval
 
-	uatime.tv_sec = C.long(t.Unix())
-	umtime.tv_sec = C.long(t.Unix())
+	uatime.tv_sec = C.long(at.Unix())
+	umtime.tv_sec = C.long(mt.Unix())
 
 	fd, err := open(strings.TrimSuffix(path, SlashSeparator))
 	if err != nil {

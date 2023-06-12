@@ -174,6 +174,10 @@ func init() {
 				Dec: setOwnerDec,
 				Call: setOwner,
 			},
+			"setTimes": rpcMethod {
+				Dec: setTimesDec,
+				Call: setTimes,
+			},
 		},
 	}
 }
