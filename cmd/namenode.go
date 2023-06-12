@@ -178,6 +178,10 @@ func init() {
 				Dec: setTimesDec,
 				Call: setTimes,
 			},
+			"truncate": rpcMethod {
+				Dec: truncateDec,
+				Call: truncate,
+			},
 		},
 	}
 }
