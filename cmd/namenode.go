@@ -182,6 +182,10 @@ func init() {
 				Dec: truncateDec,
 				Call: truncate,
 			},
+			"getFsStats":rpcMethod {
+				Dec: getFsStatsDec,
+				Call: getFsStats,
+			},
 		},
 	}
 }

@@ -19,6 +19,7 @@ import (
 	"syscall"
 	"time"
 	"unsafe"
+	"log"
 )
 
 type opfsCroot struct {
@@ -514,3 +515,40 @@ func MakeDirAll(path string, perm os.FileMode) error {
 	return nil
 
 }
+type FsInfo struct {
+	Capacity              uint64
+        Used                  uint64
+        Remaining             uint64
+        UnderReplicated       uint64
+        CorruptBlocks         uint64
+        MissingBlocks         uint64
+        MissingReplOneBlocks  uint64
+        BlocksInFuture        uint64
+        PendingDeletionBlocks uint64
+}
+
+func StatFs() (*FsInfo, error) {
+	res := new(FsInfo)
+	fd, err := open(root.rootpath)
+	if err != nil {
+		return res, err
+	}
+	var fsstat C.struct_statvfs
+	ret := C.ofapi_statvfs(fd, &fsstat)
+	if ret != cok {
+		return res, opfsErr(ret)
+	}
+	bsize := fsstat.f_bsize
+	if fsstat.f_bsize != fsstat.f_frsize || fsstat.f_frsize == C.ulong(0) {
+		log.Printf("openfs hdfs will use f_frsize %v %v\n", fsstat.f_bsize, fsstat.f_frsize)
+		bsize = fsstat.f_frsize
+	}
+
+	res.Capacity = uint64(bsize * fsstat.f_blocks)
+	res.Used = uint64(bsize * (fsstat.f_blocks - fsstat.f_bfree))
+	res.Remaining = uint64(bsize * fsstat.f_bfree)
+
+	return res, nil
+}
+
+
