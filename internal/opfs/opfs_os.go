@@ -120,6 +120,29 @@ func (opf *OpfsFile) Write(p []byte) (n int, err error) {
 	return int(ret), nil
 }
 
+func (opf *OpfsFile) WriteAt(p []byte, off int64) (n int, err error) {
+	if opf.flags&syscall.O_ACCMODE != os.O_WRONLY && opf.flags&syscall.O_ACCMODE != os.O_RDWR {
+		return 0, os.ErrPermission
+	}
+	var cbuffer unsafe.Pointer
+	if len(p) > 0 {
+		cbuffer = unsafe.Pointer(&p[0])
+	} else {
+		cbuffer = unsafe.Pointer(&_zero)
+	}
+	opf.mutex.Lock()
+	defer opf.mutex.Unlock()
+	ret := C.ofapi_write(opf.fd, C.uint64_t(off), cbuffer, C.uint32_t(len(p)))
+	if ret < cok {
+		if !errors.Is(opfsErr(ret), os.ErrNotExist) {
+			log.Printf("write fail %v\n", fmt.Errorf("write offset %v len %v", opf.offset, len(p)))
+		}
+		return 0, opfsErr(ret)
+	}
+
+	return int(ret), nil
+}
+
 func (opf *OpfsFile) Read(p []byte) (n int, err error) {
 	if opf.flags&syscall.O_ACCMODE != os.O_RDONLY && opf.flags&syscall.O_ACCMODE != os.O_RDWR {
 		return 0, os.ErrPermission

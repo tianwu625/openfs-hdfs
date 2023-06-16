@@ -186,6 +186,34 @@ func init() {
 				Dec: getFsStatsDec,
 				Call: getFsStats,
 			},
+			"getBlockLocations":rpcMethod {
+				Dec: getBlockLocationsDec,
+				Call: getBlockLocations,
+			},
+			"getServerDefaults":rpcMethod {
+				Dec: getServerDefaultsDec,
+				Call:getServerDefaults,
+			},
+			"create":rpcMethod {
+				Dec: createDec,
+				Call: create,
+			},
+			"complete":rpcMethod {
+				Dec: completeDec,
+				Call: complete,
+			},
+			"addBlock":rpcMethod {
+				Dec: addBlockDec,
+				Call: addBlock,
+			},
+			"updateBlockForPipeline":rpcMethod {
+				Dec: updateBlockForPipelineDec,
+				Call:updateBlockForPipeline,
+			},
+			"rename":rpcMethod {
+				Dec:renameDec,
+				Call:rename,
+			},
 		},
 	}
 }

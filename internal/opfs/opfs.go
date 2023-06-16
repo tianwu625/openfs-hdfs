@@ -20,6 +20,7 @@ import (
 	"time"
 	"unsafe"
 	"log"
+	pathutils "path"
 )
 
 type opfsCroot struct {
@@ -498,13 +499,18 @@ func GetOwner(path string) (uid, gid int, err error) {
 	return int(oatt.oa_uid), int(oatt.oa_gid), nil
 }
 func MakeDirAll(path string, perm os.FileMode) error {
-	path = strings.TrimPrefix(strings.TrimSuffix(path, SlashSeparator), root.rootpath)
+	path = strings.TrimPrefix(path, root.rootpath)
 	path = strings.TrimPrefix(path, SlashSeparator)
+	if path == "" {
+		log.Printf("only have /\n")
+		return nil
+	}
 	ipaths := strings.Split(path, SlashSeparator)
 	var p strings.Builder
 	p.WriteString(root.rootpath)
 	for _, s := range ipaths {
 		dirPath := p.String() + SlashSeparator + s
+		dirPath = pathutils.Clean(dirPath)
 		err := MakeDir(dirPath, perm)
 		if err != nil && !errors.Is(err, os.ErrExist) {
 			return err

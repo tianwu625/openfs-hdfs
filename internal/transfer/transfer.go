@@ -7,20 +7,22 @@ import (
 	"fmt"
 	"io"
 
-	hdfs "github.com/colinmarc/hdfs/v2/internal/protocol/hadoop_hdfs"
+	hdfs "github.com/openfs/openfs-hdfs/internal/protocol/hadoop_hdfs"
 	"google.golang.org/protobuf/proto"
 )
 
 const (
 	dataTransferVersion = 0x1c
-	writeBlockOp        = 0x50
-	readBlockOp         = 0x51
-	checksumBlockOp     = 0x55
+	WriteBlockOp        = 0x50
+	ReadBlockOp         = 0x51
+	ChecksumBlockOp     = 0x55
 )
 
-var errInvalidResponse = errors.New("invalid response from datanode")
+var ErrInvalidRequest = errors.New("invalid request from datanode")
+var ErrVersionMismatch = errors.New("invalid request data version")
+var ErrOpNotSupport = errors.New("invalid op type")
 
-func makePrefixedMessage(msg proto.Message) ([]byte, error) {
+func MakePrefixedMessage(msg proto.Message) ([]byte, error) {
 	msgBytes, err := proto.Marshal(msg)
 	if err != nil {
 		return nil, err
@@ -28,6 +30,7 @@ func makePrefixedMessage(msg proto.Message) ([]byte, error) {
 
 	lengthBytes := make([]byte, binary.MaxVarintLen32)
 	n := binary.PutUvarint(lengthBytes, uint64(len(msgBytes)))
+	fmt.Printf("n %v, msgBytes %v\n", n, msgBytes)
 	return append(lengthBytes[:n], msgBytes...), nil
 }
 
@@ -48,7 +51,7 @@ func readPrefixedMessage(r io.Reader, msg proto.Message) error {
 	// irreperable. We could avoid this by reading one byte at a time until we
 	// have a varint, but in practice this shouldn't happen anyway.
 	if varintLength < 1 || varintLength+int(respLength) < n {
-		return errInvalidResponse
+		return ErrInvalidRequest
 	}
 
 	// We may have grabbed too many bytes when reading the varint.
@@ -74,7 +77,7 @@ func readPrefixedMessage(r io.Reader, msg proto.Message) error {
 // +-----------------------------------------------------------+
 func writeBlockOpRequest(w io.Writer, op uint8, msg proto.Message) error {
 	header := []byte{0x00, dataTransferVersion, op}
-	msgBytes, err := makePrefixedMessage(msg)
+	msgBytes, err := MakePrefixedMessage(msg)
 	if err != nil {
 		return err
 	}
@@ -87,6 +90,39 @@ func writeBlockOpRequest(w io.Writer, op uint8, msg proto.Message) error {
 
 	return nil
 }
+const (
+	opHeaderLen = 3
+	versionPos = 1
+	opPos = 2
+)
+
+func ReadBlockOpRequest(r io.Reader) (op uint8, msg proto.Message, err error) {
+	bheader := make([]byte, opHeaderLen)
+	_, err = io.ReadFull(r, bheader)
+	if err != nil {
+		return 0, nil, err
+	}
+	if bheader[versionPos] != dataTransferVersion {
+		return 0, nil, ErrVersionMismatch
+	}
+	op = bheader[opPos]
+	var req proto.Message
+	switch op {
+	case WriteBlockOp:
+		req = new(hdfs.OpWriteBlockProto)
+	case ReadBlockOp:
+		req = new(hdfs.OpReadBlockProto)
+	case ChecksumBlockOp:
+		req = new(hdfs.OpBlockChecksumProto)
+	default:
+		return 0, nil, ErrOpNotSupport
+	}
+	err = readPrefixedMessage(r, req)
+	if err != nil {
+		return 0, nil, err
+	}
+	return op, req, nil
+}
 
 // The initial response from a datanode, in the case of reads and writes:
 // +-----------------------------------------------------------+
@@ -97,6 +133,21 @@ func readBlockOpResponse(r io.Reader) (*hdfs.BlockOpResponseProto, error) {
 	err := readPrefixedMessage(r, resp)
 
 	return resp, err
+}
+
+func WriteBlockOpResponse(w io.Writer, msg proto.Message) error {
+	fmt.Printf("write start\n")
+	msgBytes, err := MakePrefixedMessage(msg)
+	if err != nil {
+		return err
+	}
+	fmt.Printf("msgBytes %v\n", msgBytes)
+	_, err = w.Write(msgBytes)
+	if err != nil {
+		return err
+	}
+
+	return nil
 }
 
 func getDatanodeAddress(datanode *hdfs.DatanodeIDProto, useHostname bool) string {

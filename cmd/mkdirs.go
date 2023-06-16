@@ -28,7 +28,10 @@ func opfsMkdirs(r *hdfs.MkdirsRequestProto) (*hdfs.MkdirsResponseProto, error) {
 	res.Result = proto.Bool(false)
 
 	src := r.GetSrc()
-	mask := ^(r.GetUnmasked().GetPerm()) & r.GetMasked().GetPerm() & allperm
+	mask := r.GetMasked().GetPerm() & allperm
+	if mask == 0 {
+		mask = ^(r.GetUnmasked().GetPerm()) & allperm
+	}
 	log.Printf("mask %o\n", mask)
 	all := r.GetCreateParent()
 

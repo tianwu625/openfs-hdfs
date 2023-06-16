@@ -38,6 +38,7 @@ func opfsHdfsFileStatus(src string, fi os.FileInfo, res *hdfs.HdfsFileStatusProt
 	res.AccessTime = proto.Uint64(uint64(opfs_stat.Atime.UnixMilli()))
 	res.Permission = new(hdfs.FsPermissionProto)
 	res.Permission.Perm = proto.Uint32(uint32(mode.Perm()))
+	res.Blocksize = proto.Uint64(128*1024*1024)
 	log.Printf("fs %v\n", res)
 	return res
 }
