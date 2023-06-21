@@ -5,7 +5,6 @@ import (
 	"net"
 	"errors"
 	"fmt"
-	"hash/crc32"
 	"encoding/binary"
 
 	hdfs "github.com/openfs/openfs-hdfs/internal/protocol/hadoop_hdfs"
@@ -31,23 +30,65 @@ func opReadBlock(r *hdfs.OpReadBlockProto) (*hdfs.BlockOpResponseProto, *dataTas
 	t := dataTask {
 		src: block.GetPoolId(),
 		op: "read",
-		off: int64(block.GetBlockId() * defaultBlockSize + o),
-		size: int64(l),
+	}
+	t.off = int64(block.GetBlockId() * defaultBlockSize + o - o%defaultChunkSize)
+	t.packstart = int64(o - o % defaultChunkSize)
+	t.size = int64((l + defaultChunkSize - 1)/defaultChunkSize *defaultChunkSize)
+
+	if t.size > int64(block.GetNumBytes() - (o - o%defaultChunkSize)) {
+		t.size = int64(block.GetNumBytes() - (o - o%defaultChunkSize))
 	}
 
-	if t.size > int64(block.GetNumBytes() - o) {
-		return res, &t, errRangOffset
-	}
 	res.Status = hdfs.Status_SUCCESS.Enum()
 	res.ReadOpChecksumInfo = &hdfs.ReadOpChecksumInfoProto {
 		Checksum: &hdfs.ChecksumProto {
 			Type: hdfs.ChecksumTypeProto_CHECKSUM_CRC32C.Enum(),
 			BytesPerChecksum: proto.Uint32(defaultChunkSize),
 		},
-		ChunkOffset: proto.Uint64(0),
+		ChunkOffset: proto.Uint64(o - o%defaultChunkSize),
 	}
 
 	return res, &t, nil
+}
+
+type packetRequest struct {
+	offset int
+	seqno int
+	lastInBlock bool
+	syncblock bool
+	checksums []byte
+	data []byte
+}
+
+func writePacket(r *packetRequest, conn net.Conn) error {
+	headerInfo := &hdfs.PacketHeaderProto {
+		OffsetInBlock: proto.Int64(int64(r.offset)),
+		Seqno: proto.Int64(int64(r.seqno)),
+		LastPacketInBlock: proto.Bool(r.lastInBlock),
+		DataLen: proto.Int32(int32(len(r.data))),
+		SyncBlock: proto.Bool(r.syncblock),
+	}
+
+        totalLength := len(r.data) + len(r.checksums) + 4
+
+        header := make([]byte, 6, 6+totalLength)
+        infoBytes, err := proto.Marshal(headerInfo)
+        if err != nil {
+                return err
+        }
+
+        binary.BigEndian.PutUint32(header, uint32(totalLength))
+        binary.BigEndian.PutUint16(header[4:], uint16(len(infoBytes)))
+        header = append(header, infoBytes...)
+        header = append(header, r.checksums...)
+        header = append(header, r.data...)
+
+        _, err = conn.Write(header)
+        if err != nil {
+                return err
+        }
+
+        return nil
 }
 
 const (
@@ -58,55 +99,41 @@ const (
 //pktLen : 4 bytes + chunsum all length + chunk data all length, occupy 4 byte
 //headLen: length of pktHeaderProto encode, occupy 2 byte
 
-func splitPackets(b []byte, sum int, per int) ([][]byte, error) {
-	packs := make([][]byte, 0)
+func splitPacketsAndSent(b []byte, sum int, per int, start int64, conn net.Conn) (int, error) {
 	packCount := (sum + per - 1) / per
+	log.Printf("packCount %v, per %v, start %v, sum %v, len %v", packCount, per, start, sum, len(b))
 	for i := 0; i < packCount; i++ {
-		p := make([]byte, 6)
-		pktHeader := new(hdfs.PacketHeaderProto)
-		pktHeader.OffsetInBlock = proto.Int64(int64(i * per))
-		pktHeader.Seqno = proto.Int64(int64(i))
-		pktHeader.LastPacketInBlock = proto.Bool(false)
+		pdata := []byte{}
+		poff := i * per
 		if i + 1 == packCount {
-			pktHeader.DataLen = proto.Int32(int32(sum - i * per))
+			pdata = b[poff:]
 		} else {
-			pktHeader.DataLen = proto.Int32(int32(per))
+			pdata = b[poff:poff+per]
 		}
-		pktHeader.SyncBlock = proto.Bool(false)
-		headerBytes, err := proto.Marshal(pktHeader)
+		checksumArgs := &argsFileInfo {
+			size: int64(len(pdata)),
+			perSize: defaultChunkSize,
+			checktype: "CHECKSUM_CRC32C",
+			bdata: pdata,
+		}
+		checksums, err := getCrcBytes(checksumArgs)
 		if err != nil {
-			return packs, err
+			return i, err
 		}
-		headerLen := len(headerBytes)
-		binary.BigEndian.PutUint16(p[4:], uint16(headerLen))
-		checksumCount := 0
-		if i + 1 == packCount {
-			left := sum - i * per
-			checksumCount = (left + defaultChunkSize - 1) / defaultChunkSize
-		} else {
-			checksumCount = (per + defaultChunkSize - 1) / defaultChunkSize
+		req := &packetRequest {
+			offset: i * per + int(start),
+			seqno : i,
+			lastInBlock:false,
+			syncblock: false,
+			checksums:checksums,
+			data:pdata,
 		}
-		pktLen := uint32(4 + 4 * checksumCount + sum)
-		binary.BigEndian.PutUint32(p, pktLen)
-		checksums := make([]byte, 4 * checksumCount)
-		table := crc32.MakeTable(crc32.Castagnoli)
-		for j := 0; j < checksumCount; j++ {
-			var v uint32
-			if j + 1 == checksumCount {
-				v = crc32.Checksum(b[(j * defaultChunkSize):], table)
-			} else {
-				v = crc32.Checksum(b[(j * defaultChunkSize):((j + 1) * defaultChunkSize)], table)
-			}
-			log.Printf("pack NO.%v, chunk NO.%v checksum %v\n",i, j, v)
-			binary.BigEndian.PutUint32(checksums[(j * 4):], v)
+		if err := writePacket(req, conn); err != nil{
+			return i, err
 		}
-		p = append(p[:6], headerBytes...)
-		p = append(p, checksums...)
-		p = append(p, b...)
-		packs = append(packs, p)
 	}
 
-	return packs, nil
+	return packCount, nil
 }
 
 func sendLast(seqno int, conn net.Conn) {
@@ -123,6 +150,7 @@ func sendLast(seqno int, conn net.Conn) {
 	binary.BigEndian.PutUint32(p, 4)
 	p = append(p[:6], headerBytes...)
 
+	log.Printf("send last message !!!!")
 	_, err := conn.Write(p)
 	if err != nil {
 		log.Printf("send last message fail %v\n", err)
@@ -134,25 +162,32 @@ const (
 	defaultPacketSize = 65536 //64KB
 )
 
-func getDataFromFile(t *dataTask, conn net.Conn) error {
-	f, err := opfs.Open(t.src)
+func opfsGetData(src string, off int64, b []byte) (int, error) {
+	f, err := opfs.Open(src)
 	if err != nil {
-		return err
+		return 0, err
 	}
 	defer f.Close()
+	log.Printf("off %v, len %v\n", off, len(b))
+	n, err := f.ReadAt(b, off)
+	if err != nil {
+		return 0, err
+	}
+
+	return n, nil
+}
+
+func getDataFromFile(t *dataTask, conn net.Conn) error {
 	b := make([]byte, t.size)
-	n, err := f.ReadAt(b, t.off)
+	n, err := opfsGetData(t.src, t.off, b)
 	if err != nil || n != len(b) {
 		return fmt.Errorf("fail to read %v, %v, %v", t.src, t.off, t.size)
 	}
-	packs, err := splitPackets(b, n, defaultPacketSize)
-	for _, p := range packs {
-		_, err = conn.Write(p)
-		if err != nil {
-			return err
-		}
+	seq, err := splitPacketsAndSent(b, n, defaultPacketSize, t.packstart, conn)
+	if err != nil {
+		return err
 	}
-	sendLast(len(packs), conn)
+	sendLast(seq, conn)
 
 	return nil
 }

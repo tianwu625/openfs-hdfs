@@ -12,8 +12,9 @@ import (
 type dataTask struct {
 	src string //path of file
 	op string //operate
-	off int64 //offset
+	off int64 //offset of file logic
 	size int64 //length
+	packstart int64 //start in block
 	checkMethod string
 	bytesPerCheck uint32
 }
@@ -42,7 +43,7 @@ func HandleDataXfer(conn net.Conn) {
 			break
 		}
 		var resp *hdfs.BlockOpResponseProto
-		var t *dataTask
+		var t *dataTask = nil
 		switch op {
 		case xfer.WriteBlockOp:
 			req := m.(*hdfs.OpWriteBlockProto)
@@ -61,10 +62,11 @@ func HandleDataXfer(conn net.Conn) {
 		}
 		err = xfer.WriteBlockOpResponse(conn, resp)
 		if err != nil {
+			log.Printf("write BlockOpResponse %v\n", err)
 			break
 		}
 
-		if err == nil {
+		if err == nil && t != nil{
 			err = ProcessData(t, conn)
 			if err != nil {
 				break

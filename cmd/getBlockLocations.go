@@ -132,6 +132,7 @@ func opfsGetBlockLocations(r *hdfs.GetBlockLocationsRequestProto)(*hdfs.GetBlock
 	 if err != nil {
 		 return res, err
 	 }
+	 log.Printf("blocks %v", blocksproto)
 	 res.Locations = blocksproto
 	 return res, nil
 }

@@ -173,6 +173,8 @@ func (opf *OpfsFile) Read(p []byte) (n int, err error) {
 	}
 }
 
+const perReadSize = (1 * 1024 * 1024) //1MB
+
 func (opf *OpfsFile) ReadAt(p []byte, off int64) (n int, err error) {
 
 	//logger.Info("in lock opf %p read file %s len %d fd %p", opf, opf.name, len(p), unsafe.Pointer(opf.fd))
@@ -187,12 +189,23 @@ func (opf *OpfsFile) ReadAt(p []byte, off int64) (n int, err error) {
 		cbuffer = unsafe.Pointer(&_zero)
 	}
 
-	ret := C.ofapi_read(opf.fd, C.uint64_t(off), cbuffer, C.uint32_t(len(p)))
-	if ret < cok {
-		return 0, os.ErrInvalid
+	count := (len(p) + perReadSize - 1) / perReadSize
+	for i := 0; i < count; i++ {
+		cbuffer = unsafe.Pointer(&p[i * perReadSize])
+		coff := C.uint64_t(off + int64(i * perReadSize))
+		clen := C.uint32_t(uint32(perReadSize))
+		if i + 1 == count {
+			clen = C.uint32_t(uint32(len(p[i*perReadSize:])))
+		}
+		ret := C.ofapi_read(opf.fd, coff, cbuffer, clen)
+		if ret < cok {
+			return 0, os.ErrInvalid
+		}
+	//	log.Printf("i %v, count %v, read 1mb done %v, %v", i, count, coff, clen)
+		n += int(ret)
 	}
 
-	return int(ret), nil
+	return n, nil
 }
 
 func (opf *OpfsFile) Seek(offset int64, whence int) (int64, error) {

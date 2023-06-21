@@ -214,6 +214,10 @@ func init() {
 				Dec:renameDec,
 				Call:rename,
 			},
+			"renewLease":rpcMethod {
+				Dec: renewLeaseDec,
+				Call:renewLease,
+			},
 		},
 	}
 }
