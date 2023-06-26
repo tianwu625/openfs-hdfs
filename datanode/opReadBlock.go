@@ -3,7 +3,6 @@ package datanode
 import (
 	"log"
 	"net"
-	"errors"
 	"fmt"
 	"encoding/binary"
 
@@ -11,8 +10,6 @@ import (
 	"github.com/openfs/openfs-hdfs/internal/opfs"
 	"google.golang.org/protobuf/proto"
 )
-
-var errRangOffset = errors.New("len is over the sizeof block")
 
 func opReadBlock(r *hdfs.OpReadBlockProto) (*hdfs.BlockOpResponseProto, *dataTask, error) {
 	res := new(hdfs.BlockOpResponseProto)
@@ -33,7 +30,7 @@ func opReadBlock(r *hdfs.OpReadBlockProto) (*hdfs.BlockOpResponseProto, *dataTas
 	}
 	t.off = int64(block.GetBlockId() * defaultBlockSize + o - o%defaultChunkSize)
 	t.packstart = int64(o - o % defaultChunkSize)
-	t.size = int64((l + defaultChunkSize - 1)/defaultChunkSize *defaultChunkSize)
+	t.size = int64((l + defaultChunkSize - 1 + o - o%defaultChunkSize)/defaultChunkSize * defaultChunkSize)
 
 	if t.size > int64(block.GetNumBytes() - (o - o%defaultChunkSize)) {
 		t.size = int64(block.GetNumBytes() - (o - o%defaultChunkSize))

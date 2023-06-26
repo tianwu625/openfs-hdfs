@@ -218,6 +218,22 @@ func init() {
 				Dec: renewLeaseDec,
 				Call:renewLease,
 			},
+			"append":rpcMethod {
+				Dec: appendFileDec,
+				Call:appendFile,
+			},
+			"updatePipeline":rpcMethod {
+				Dec: updatePipelineDec,
+				Call: updatePipeline,
+			},
+			"concat": rpcMethod {
+				Dec: concatFileDec,
+				Call: concatFile,
+			},
+			"getContentSummary": rpcMethod {
+				Dec: getContentSummaryDec,
+				Call: getContentSummary,
+			},
 		},
 	}
 }

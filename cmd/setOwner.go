@@ -5,6 +5,7 @@ import (
 	"os/exec"
 	"path"
 	"strconv"
+	"strings"
 
 	"github.com/openfs/openfs-hdfs/internal/opfs"
 	hdfs "github.com/openfs/openfs-hdfs/internal/protocol/hadoop_hdfs"
@@ -18,7 +19,7 @@ func setOwnerDec(b []byte) (proto.Message, error) {
 
 func setOwner(m proto.Message) (proto.Message, error) {
 	req := m.(*hdfs.SetOwnerRequestProto)
-	log.Printf("src %v\nusername %v\ngroupname%v\n", req.GetSrc(), req.GetUsername(), req.GetGroupname())
+	log.Printf("src %v\nusername %v\ngroupname %v\n", req.GetSrc(), req.GetUsername(), req.GetGroupname())
 	return opfsSetOwner(req)
 }
 
@@ -33,9 +34,14 @@ func opfsGetUid(user string) (uid int, err error) {
 	c := exec.Command(cmdPath, user)
 	output, err := c.CombinedOutput()
 	if err != nil {
+		log.Printf("fail to get user uid %v, %v", user, err)
 		return -1, err
 	}
-	uid, _ = strconv.Atoi(string(output))
+	uid, err = strconv.Atoi(strings.TrimSuffix(string(output), "\n"))
+	if err != nil {
+		log.Printf("fail to transfer output to uid %v, %v", string(output), err)
+		return -1, err
+	}
 	return uid, nil
 }
 func opfsGetGid(group string) (gid int, err error) {
@@ -43,9 +49,14 @@ func opfsGetGid(group string) (gid int, err error) {
 	c := exec.Command(cmdPath, group)
 	output, err := c.CombinedOutput()
 	if err != nil {
+		log.Printf("fail to get group gid %v, %v", group, err)
 		return -1, err
 	}
-	gid, _ = strconv.Atoi(string(output))
+	gid, err = strconv.Atoi(strings.TrimSuffix(string(output), "\n"))
+	if err != nil {
+		log.Printf("fail to transfer output to gid %v, %v", string(output), err)
+		return -1, err
+	}
 	return gid, nil
 }
 
@@ -81,6 +92,7 @@ func opfsSetOwner(r *hdfs.SetOwnerRequestProto) (*hdfs.SetOwnerResponseProto, er
 			}
 		}
 	}
+	log.Printf("set new owner %v %v", uid, gid)
 
 	err = opfs.SetOwner(src, uid, gid)
 	if err != nil {

@@ -16,7 +16,7 @@ func setPermissionDec(b []byte) (proto.Message, error) {
 
 func setPermission(m proto.Message) (proto.Message, error) {
 	req := m.(*hdfs.SetPermissionRequestProto)
-	log.Printf("src %v\nperm %v\n", req.GetSrc(), req.GetPermission().GetPerm())
+	log.Printf("src %v\nperm %o\n", req.GetSrc(), req.GetPermission().GetPerm())
 	return opfsSetPermission(req)
 }
 
