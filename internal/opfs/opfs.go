@@ -321,15 +321,18 @@ const (
 	AclFlagDefault = int(C.OFAPI_ACE_FLAG_NO_PROPAGET)
 	AclFlagInherit = int(C.OFAPI_ACE_FLAG_FILE_INHERIT |
 		C.OFAPI_ACE_FLAG_DIR_INHERIT)
+	AclFlagOnlyInherit = int(C.OFAPI_ACE_FLAG_FILE_INHERIT |
+                C.OFAPI_ACE_FLAG_DIR_INHERIT | C.OFAPI_ACE_FLAG_INHERIT_ONLY)
+	AclExcute = int(C.OFAPI_ACE_MASK_EXECUTE)
 )
 
 //for acl operate
 type AclGrant struct {
-	uid     int
-	gid     int
-	acltype string
-	aclbits int
-	aclflag int
+	Uid     int
+	Gid     int
+	Acltype string
+	Aclbits int
+	Aclflag int
 }
 
 func toCPoint(as []C.struct_oace) *C.struct_oace {
@@ -353,23 +356,23 @@ func SetAcl(path string, grants []AclGrant) error {
 	for _, og := range grants {
 		var a C.struct_oace
 		a.oe_type = C.OFAPI_ACE_TYPE_ALLOWED
-		switch og.acltype {
+		switch og.Acltype {
 		case UserType:
 			a.oe_credtype = C.OFAPI_ACE_CRED_UID
-			a.oe_cred = C.uint32_t(og.uid)
+			a.oe_cred = C.uint32_t(og.Uid)
 		case GroupType:
 			a.oe_credtype = C.OFAPI_ACE_CRED_GID
-			a.oe_cred = C.uint32_t(og.gid)
+			a.oe_cred = C.uint32_t(og.Gid)
 		case OwnerType:
 			a.oe_credtype = C.OFAPI_ACE_CRED_OWNER
-			a.oe_cred = C.uint32_t(og.uid)
+			a.oe_cred = C.uint32_t(og.Uid)
 		case EveryType:
 			a.oe_credtype = C.OFAPI_ACE_CRED_EVERYONE
 		default:
 			return syscall.Errno(95)
 		}
-		a.oe_mask = C.uint32_t(og.aclbits)
-		a.oe_flag = C.uint32_t(og.aclflag)
+		a.oe_mask = C.uint32_t(og.Aclbits)
+		a.oe_flag = C.uint32_t(og.Aclflag)
 		oa = append(oa, a)
 	}
 	var aid C.uint64_t
@@ -380,10 +383,12 @@ func SetAcl(path string, grants []AclGrant) error {
 	fd, err := open(path)
 	defer C.ofapi_close(fd)
 	if err != nil {
+		log.Printf("open fail %v, %v", path, err)
 		return err
 	}
 	ret = C.ofapi_setattr(fd, C.uint32_t(C.OFAPI_UID_INVAL), C.uint32_t(C.OFAPI_GID_INVAL), C.uint32_t(C.OFAPI_MOD_INVAL), aid)
 	if ret != cok {
+		log.Printf("setattr failed %v", ret)
 		return opfsErr(ret)
 	}
 	return nil
@@ -460,24 +465,24 @@ func GetAcl(path string) ([]AclGrant, error) {
 		var og AclGrant
 		switch oa[i].oe_credtype {
 		case C.OFAPI_ACE_CRED_UID:
-			og.acltype = UserType
-			og.uid = int(oa[i].oe_cred)
+			og.Acltype = UserType
+			og.Uid = int(oa[i].oe_cred)
 		case C.OFAPI_ACE_CRED_GID:
-			og.acltype = GroupType
-			og.gid = int(oa[i].oe_cred)
+			og.Acltype = GroupType
+			og.Gid = int(oa[i].oe_cred)
 		case C.OFAPI_ACE_CRED_OWNER:
-			og.acltype = OwnerType
-			og.uid = int(oa[i].oe_cred)
+			og.Acltype = OwnerType
+			og.Uid = int(oa[i].oe_cred)
 		case C.OFAPI_ACE_CRED_EVERYONE:
-			og.acltype = EveryType
+			og.Acltype = EveryType
 		default:
-			og.acltype = ""
+			og.Acltype = ""
 		}
-		if og.acltype == "" {
+		if og.Acltype == "" {
 			continue
 		}
-		og.aclbits = int(oa[i].oe_mask)
-		og.aclflag = int(oa[i].oe_flag)
+		og.Aclbits = int(oa[i].oe_mask)
+		og.Aclflag = int(oa[i].oe_flag)
 		opfsgrants = append(opfsgrants, og)
 	}
 	return opfsgrants, nil
@@ -499,18 +504,15 @@ func GetOwner(path string) (uid, gid int, err error) {
 	return int(oatt.oa_uid), int(oatt.oa_gid), nil
 }
 func MakeDirAll(path string, perm os.FileMode) error {
-	path = strings.TrimPrefix(path, root.rootpath)
-	path = strings.TrimPrefix(path, SlashSeparator)
-	if path == "" {
-		log.Printf("only have /\n")
-		return nil
-	}
 	ipaths := strings.Split(path, SlashSeparator)
 	var p strings.Builder
 	p.WriteString(root.rootpath)
 	for _, s := range ipaths {
 		dirPath := p.String() + SlashSeparator + s
 		dirPath = pathutils.Clean(dirPath)
+		if dirPath == "/" {
+			continue
+		}
 		err := MakeDir(dirPath, perm)
 		if err != nil && !errors.Is(err, os.ErrExist) {
 			return err

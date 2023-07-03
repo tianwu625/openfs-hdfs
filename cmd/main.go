@@ -14,7 +14,11 @@ const (
 	defaultDataNodeXferPort = 50010
 )
 
+var globalMeta *opfsAclCache
+
 func StartNameNode() {
+	//init meta cache
+	globalMeta = InitAclCache()
 	ln, err := net.Listen("tcp", fmt.Sprintf(":%v", defaultNameNodePort))
 	if err != nil {
 		log.Fatal("listen fail", err)

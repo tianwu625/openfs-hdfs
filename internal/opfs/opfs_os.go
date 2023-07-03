@@ -27,8 +27,9 @@ type OpfsInfo struct {
 }
 
 type OpfsStat struct {
-	Uid int
-	Gid int
+	Ino uint64
+	Uid uint32
+	Gid uint32
 	Atime time.Time
 }
 
@@ -77,8 +78,9 @@ func (ofi OpfsInfo) IsDir() bool {
 
 func (ofi OpfsInfo) Sys() interface{} {
 	return &OpfsStat {
-		Uid: int(ofi.stat.oa_uid),
-		Gid: int(ofi.stat.oa_gid),
+		Ino: uint64(ofi.stat.oa_ino),
+		Uid: uint32(ofi.stat.oa_uid),
+		Gid: uint32(ofi.stat.oa_gid),
 		Atime: time.Unix(int64(ofi.stat.oa_atime), int64(ofi.stat.oa_atime_nsec)),
 	}
 }

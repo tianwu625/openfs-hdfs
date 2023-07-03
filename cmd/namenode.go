@@ -234,6 +234,30 @@ func init() {
 				Dec: getContentSummaryDec,
 				Call: getContentSummary,
 			},
+			"listEncryptionZones":rpcMethod {
+				Dec: listEncryptionZonesDec,
+				Call: listEncryptionZones,
+			},
+			"modifyAclEntries":rpcMethod {
+				Dec: modifyAclEntriesDec,
+				Call: modifyAclEntries,
+			},
+			"getAclStatus": rpcMethod {
+				Dec: getAclStatusDec,
+				Call: getAclStatus,
+			},
+			"removeAcl": rpcMethod {
+				Dec: removeAclDec,
+				Call: removeAcl,
+			},
+			"removeDefaultAcl": rpcMethod {
+				Dec: removeDefaultAclDec,
+				Call: removeDefaultAcl,
+			},
+			"setAcl": rpcMethod {
+				Dec: setAclDec,
+				Call: setAcl,
+			},
 		},
 	}
 }

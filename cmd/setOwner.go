@@ -30,6 +30,10 @@ const (
 )
 
 func opfsGetUid(user string) (uid int, err error) {
+	uid, err = strconv.Atoi(user)
+	if err == nil {
+		return uid, nil
+	}
 	cmdPath := path.Join(OpfsCmdDir, OpfsUid)
 	c := exec.Command(cmdPath, user)
 	output, err := c.CombinedOutput()
@@ -45,6 +49,10 @@ func opfsGetUid(user string) (uid int, err error) {
 	return uid, nil
 }
 func opfsGetGid(group string) (gid int, err error) {
+	gid, err = strconv.Atoi(group)
+	if err == nil {
+		return gid, nil
+	}
 	cmdPath := path.Join(OpfsCmdDir, OpfsGid)
 	c := exec.Command(cmdPath, group)
 	output, err := c.CombinedOutput()
@@ -73,23 +81,17 @@ func opfsSetOwner(r *hdfs.SetOwnerRequestProto) (*hdfs.SetOwnerResponseProto, er
 	if user == "" {
 		uid = -1
 	} else {
-		uid, err = strconv.Atoi(user)
+		uid, err = opfsGetUid(user)
 		if err != nil {
-			uid, err = opfsGetUid(user)
-			if err != nil {
-				return res, err
-			}
+			return res, err
 		}
 	}
 	if group == "" {
 		gid = -1
 	} else {
-		gid, err = strconv.Atoi(group)
+		gid, err = opfsGetGid(group)
 		if err != nil {
-			gid, err = opfsGetGid(group)
-			if err != nil {
-				return res, err
-			}
+			return res, err
 		}
 	}
 	log.Printf("set new owner %v %v", uid, gid)

@@ -33,7 +33,6 @@ option go_package = "github.com/openfs/openfs-hdfs/internal/protocol/hadoop_hdfs
 package hadoop.hdfs;
 
 import "hdfs.proto";
-import "HAServiceProtocol.proto";
 
 /**
  * Block access token information

@@ -38,6 +38,10 @@ func opfsGetContentSummary(r *hdfs.GetContentSummaryRequestProto) (*hdfs.GetCont
 	return res, nil
 }
 
+const (
+	defaultReplicate = 1
+)
+
 func opfsGetSummary(src string) (*hdfs.ContentSummaryProto, error) {
 	dirs, files, allsize, err := opfsRecursivePath(src)
 	if err != nil && !errors.Is(err, io.EOF){
@@ -51,6 +55,8 @@ func opfsGetSummary(src string) (*hdfs.ContentSummaryProto, error) {
 	quotaEntry, err := opfsGetQuota(src)
 	if quotaEntry == nil {
 		quotaNum, _, spaceQuota, consumeSpace = opfsGetdefaultQuota()
+		//quto not set, consumespace can't get from file system
+		consumeSpace += allsize * defaultReplicate
 	} else {
 		quotaNum, _, spaceQuota, consumeSpace = opfsGetquotaEntry(quotaEntry)
 	}

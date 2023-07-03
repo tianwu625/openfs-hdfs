@@ -11,6 +11,38 @@ import (
 	"google.golang.org/protobuf/proto"
 )
 
+const ProtoFlagNone uint32 = 0
+
+const (
+	ProtoFlagAcl uint32 = (1 << iota)
+	ProtoFlagCrypt
+	ProtoFlagEc
+	ProtoFlagSnapshot
+)
+
+func opfsgetSysInfo(fi os.FileInfo) (*opfs.OpfsStat, error) {
+	fsys := fi.Sys()
+	opfsStat, ok := fsys.(*opfs.OpfsStat)
+	if !ok {
+		return nil, fmt.Errorf("sysInfo not opfsStat")
+	}
+
+	return opfsStat, nil
+}
+
+func opfsGetSysInfo(src string) (*opfs.OpfsStat, error) {
+	f, err := opfs.Open(src)
+	if err != nil {
+		return nil, err
+	}
+	defer f.Close()
+	fi, err := f.Stat()
+	if err != nil {
+		return nil, err
+	}
+	return opfsgetSysInfo(fi)
+}
+
 func opfsHdfsFileStatus(src string, fi os.FileInfo, res *hdfs.HdfsFileStatusProto) *hdfs.HdfsFileStatusProto {
 	if res == nil {
 		res = new(hdfs.HdfsFileStatusProto)
@@ -26,8 +58,15 @@ func opfsHdfsFileStatus(src string, fi os.FileInfo, res *hdfs.HdfsFileStatusProt
 	} else {
 		panic(fmt.Sprintf("file type not support %v", mode))
 	}
-	fsys := fi.Sys()
-	opfs_stat := fsys.(*opfs.OpfsStat)
+	opfs_stat, _ := opfsgetSysInfo(fi)
+
+	perm, setAcl, _ := opfsGetPermWithAcl(src)
+
+	log.Printf("getFileInfo perm %o", perm)
+	flag := ProtoFlagNone
+	if setAcl {
+		flag |= ProtoFlagAcl
+	}
 
 	res.FileType = t.Enum()
 	res.Path = []byte(src)
@@ -36,9 +75,12 @@ func opfsHdfsFileStatus(src string, fi os.FileInfo, res *hdfs.HdfsFileStatusProt
 	res.Group = proto.String(fmt.Sprintf("%d", opfs_stat.Gid))
 	res.ModificationTime = proto.Uint64(uint64(fi.ModTime().UnixMilli()))
 	res.AccessTime = proto.Uint64(uint64(opfs_stat.Atime.UnixMilli()))
-	res.Permission = new(hdfs.FsPermissionProto)
-	res.Permission.Perm = proto.Uint32(uint32(mode.Perm()))
+	res.Permission = &hdfs.FsPermissionProto {
+		Perm: proto.Uint32(perm),
+	}
 	res.Blocksize = proto.Uint64(128*1024*1024)
+	res.FileId = proto.Uint64(opfs_stat.Ino)
+	res.Flags = proto.Uint32(1)
 	log.Printf("fs %v\n", res)
 	return res
 }
