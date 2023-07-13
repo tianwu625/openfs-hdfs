@@ -19,6 +19,7 @@ var globalMeta *opfsAclCache
 func StartNameNode() {
 	//init meta cache
 	globalMeta = InitAclCache()
+	globalFs = InitFsMeta()
 	ln, err := net.Listen("tcp", fmt.Sprintf(":%v", defaultNameNodePort))
 	if err != nil {
 		log.Fatal("listen fail", err)

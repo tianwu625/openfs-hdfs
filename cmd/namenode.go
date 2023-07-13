@@ -258,6 +258,34 @@ func init() {
 				Dec: setAclDec,
 				Call: setAcl,
 			},
+			"getXAttrs": rpcMethod {
+				Dec: getXAttrsDec,
+				Call: getXAttrs,
+			},
+			"setXAttr": rpcMethod {
+				Dec: setXAttrDec,
+				Call:setXAttr,
+			},
+			"removeXAttr":rpcMethod {
+				Dec: removeXAttrDec,
+				Call: removeXAttr,
+			},
+			"setReplication": rpcMethod {
+				Dec: setReplicationDec,
+				Call: setReplication,
+			},
+			"setSafeMode": rpcMethod {
+				Dec: setSafeModeDec,
+				Call: setSafeMode,
+			},
+			"getFsReplicatedBlockStats": rpcMethod {
+				Dec: getFsReplicatedBlockStatsDec,
+				Call: getFsReplicatedBlockStats,
+			},
+			"getFsECBlockGroupStats": rpcMethod {
+				Dec: getFsECBlockGroupStatsDec,
+				Call: getFsECBlockGroupStats,
+			},
 		},
 	}
 }

@@ -279,19 +279,27 @@ func Open(path string) (*OpfsFile, error) {
 	return &opf, nil
 }
 
-func Utime(path string, mt time.Time, at time.Time) error {
+func Utime(path string, mt time.Time, mset bool, at time.Time, aset bool) error {
 	var uatime C.struct_timeval
 	var umtime C.struct_timeval
+	var uap,ump *C.struct_timeval
 
-	uatime.tv_sec = C.long(at.Unix())
-	umtime.tv_sec = C.long(mt.Unix())
+	if mset {
+		umtime.tv_sec = C.long(mt.Unix())
+		ump = &umtime
+	}
+
+	if aset {
+		uatime.tv_sec = C.long(at.Unix())
+		uap = &uatime
+	}
 
 	fd, err := open(strings.TrimSuffix(path, SlashSeparator))
 	if err != nil {
 		return err
 	}
 	defer C.ofapi_close(fd)
-	ret := C.ofapi_utime(fd, &uatime, &umtime)
+	ret := C.ofapi_utime(fd, uap, ump)
 	if ret != cok {
 		return opfsErr(ret)
 	}
@@ -559,4 +567,95 @@ func StatFs() (*FsInfo, error) {
 	return res, nil
 }
 
+type OpfsXAttrEntry struct {
+	Scope string
+	Name string
+	Value []byte
+}
+
+func GetXAttr(src string) ([]OpfsXAttrEntry, error) {
+	fd, err := open(src)
+	if err != nil {
+		return nil, err
+	}
+
+	var oxae *C.struct_oxattrent
+
+	ret := C.ofapi_getxattr(fd, &oxae)
+	if ret != cok {
+		return []OpfsXAttrEntry{}, opfsErr(ret)
+	}
+
+	if oxae == nil {
+		log.Printf("no extend attr")
+		return []OpfsXAttrEntry{}, nil
+	}
+
+	log.Printf("oxae %T, %v", oxae, oxae)
+
+	res := make([]OpfsXAttrEntry, 0, 128)
+
+	for oxae.ox_size != C.uint32_t(0) {
+		conName := C.GoString(oxae.ox_name)
+		names := strings.SplitN(conName, ".", 2)
+		dataLen := int(oxae.ox_dlen)
+		v := make([]byte, dataLen)
+		cvalue := (*[1<<30]byte)(unsafe.Pointer(oxae.ox_data))[:dataLen:dataLen]
+		copy(v, cvalue)
+		e := OpfsXAttrEntry {
+			Scope: names[0],
+			Name: names[1],
+			Value:v,
+		}
+		res = append(res, e)
+		p := unsafe.Pointer(oxae)
+		log.Printf("p %T %p", p, p)
+		oxae = (*C.struct_oxattrent)(unsafe.Pointer(uintptr(p) + uintptr(oxae.ox_size)))
+		log.Printf("oxae %p", oxae)
+	}
+
+	return res, nil
+}
+
+
+
+func SetXAttr(src string, xattr OpfsXAttrEntry) error {
+	fd, err := open(src)
+	if err != nil {
+		return err
+	}
+	defer C.ofapi_close(fd)
+	var cx C.struct_oxattrent
+	cx.ox_size = C.uint32_t(0)
+	cx.ox_dlen = C.uint32_t(len(xattr.Value))
+	cname := C.CString(xattr.Scope+"."+xattr.Name)
+	cx.ox_name = cname
+	defer C.free(unsafe.Pointer(cname))
+	cdata := C.CBytes(xattr.Value)
+	defer C.free(unsafe.Pointer(cdata))
+	cx.ox_data = cdata
+	ret := C.ofapi_setxattr(fd, &cx)
+	if ret != cok {
+		return opfsErr(ret)
+	}
+
+	return nil
+}
+
+func RemoveXAttr(src, name string) error {
+	fd, err := open(src)
+	if err != nil {
+		return err
+	}
+
+	cname := C.CString(name)
+	defer C.free(unsafe.Pointer(cname))
+
+	ret := C.ofapi_rmvxattr(fd, cname)
+	if ret != cok {
+		return opfsErr(ret)
+	}
+
+	return nil
+}
 
