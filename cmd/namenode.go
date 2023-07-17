@@ -92,6 +92,16 @@ func doNamenodeHandshake(conn net.Conn) {
 		User:            user,
 		Conn:            conn,
 	}
+	log.Printf("check user %v, addr %v", user, conn.RemoteAddr().String())
+	host, _, err := net.SplitHostPort(conn.RemoteAddr().String())
+	if err != nil {
+		log.Fatal("splist host port fail %v", err)
+	}
+	log.Printf("naddr %v", host)
+	if !globalClientProtoAcl.CheckAllow(user, host) {
+		log.Fatal("no permission user %v host %v", user, host)
+		// should sent reply for no permission
+	}
 	go handleRpc(&nc)
 }
 
@@ -285,6 +295,42 @@ func init() {
 			"getFsECBlockGroupStats": rpcMethod {
 				Dec: getFsECBlockGroupStatsDec,
 				Call: getFsECBlockGroupStats,
+			},
+			"getDatanodeReport": rpcMethod {
+				Dec: getDatanodeReportDec,
+				Call: getDatanodeReport,
+			},
+			"getSlowDatanodeReport": rpcMethod {
+				Dec: getSlowDatanodeReportDec,
+				Call: getSlowDatanodeReport,
+			},
+			"saveNamespace": rpcMethod {
+				Dec: saveNamespaceDec,
+				Call: saveNamespace,
+			},
+			"rollEdits": rpcMethod {
+				Dec: rollEditsDec,
+				Call: rollEdits,
+			},
+			"restoreFailedStorage":rpcMethod {
+				Dec: restoreFailedStorageDec,
+				Call: restoreFailedStorage,
+			},
+			"refreshNodes": rpcMethod {
+				Dec: refreshNodesDec,
+				Call: refreshNodes,
+			},
+			"finalizeUpgrade":rpcMethod {
+				Dec: finalizeUpgradeDec,
+				Call: finalizeUpgrade,
+			},
+			"upgradeStatus": rpcMethod {
+				Dec: upgradeStatusDec,
+				Call: upgradeStatus,
+			},
+			"refreshServiceAcl": rpcMethod {
+				Dec: refreshServiceAclDec,
+				Call: refreshServiceAcl,
 			},
 		},
 	}

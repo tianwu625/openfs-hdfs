@@ -7,6 +7,7 @@ import (
 
 	"github.com/openfs/openfs-hdfs/internal/opfs"
 	"github.com/openfs/openfs-hdfs/datanode"
+	hconf "github.com/openfs/openfs-hdfs/hadoopconf"
 )
 
 const (
@@ -15,11 +16,43 @@ const (
 )
 
 var globalMeta *opfsAclCache
+var globalConfEnv *hconf.HadoopConfEnv
+var globalClientProtoAcl *serviceAclConf
+
+func getClientProtoAcl() (*serviceAclConf, error) {
+	core, err := globalConfEnv.ReloadCore()
+	if !core.ParseEnableProtoAcl() {
+		return NewServiceAclConf(), nil
+	}
+	conf, err := globalConfEnv.ReloadAclService()
+	if err != nil {
+		return nil, err
+	}
+	acl, err := conf.ParseClientProtocolAcl()
+	if err != nil {
+		return nil, err
+	}
+	aclconf := NewServiceAclConf()
+
+	err = aclconf.Set(true, acl)
+	if err != nil {
+		return aclconf, err
+	}
+
+	return aclconf, nil
+}
 
 func StartNameNode() {
 	//init meta cache
 	globalMeta = InitAclCache()
 	globalFs = InitFsMeta()
+	globalConfEnv = hconf.NewHadoopConfEnv()
+	var err error
+	globalClientProtoAcl, err = getClientProtoAcl()
+	if err != nil {
+		log.Fatal("getClientProtoAcl fail %v", err)
+	}
+
 	ln, err := net.Listen("tcp", fmt.Sprintf(":%v", defaultNameNodePort))
 	if err != nil {
 		log.Fatal("listen fail", err)

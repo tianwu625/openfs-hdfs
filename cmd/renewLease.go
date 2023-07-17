@@ -17,6 +17,7 @@ func renewLeaseDec(b []byte) (proto.Message, error) {
 func renewLease(m proto.Message) (proto.Message, error) {
 	req := m.(*hdfs.RenewLeaseRequestProto)
 	log.Printf("client %v", req.GetClientName())
+	log.Printf("namespace %v", req.GetNamespaces())
 	return opfsRenewLease(req)
 }
 

@@ -28,6 +28,7 @@ func setSafeMode(m proto.Message) (proto.Message, error) {
 
 type opfsHdfsFsMeta struct {
 	Mode string `json:"mode, omitempty"`
+	RestoreFailedStorage string `json: "restoreFail, omitempty"`
 }
 
 type opfsHdfsFs struct {
@@ -90,11 +91,15 @@ const (
 
 	modeSafe = "SAFE" //read only
 	modeNormal = "NORMAL" // read write
+
+	onValue = "ON"
+	offValue = "OFF"
 )
 
 func defaultFsMeta() *opfsHdfsFsMeta {
 	return &opfsHdfsFsMeta {
 		Mode: modeNormal,
+		RestoreFailedStorage: onValue,
 	}
 }
 
@@ -140,6 +145,26 @@ func (fs *opfsHdfsFs) SetMode(mode string) error{
 	return nil
 }
 
+func (fs *opfsHdfsFs) GetRestoreFailedStorage() string {
+	fs.Lock()
+	defer fs.Unlock()
+	return fs.meta.RestoreFailedStorage
+}
+
+func (fs *opfsHdfsFs) SetRestoreFailedStorage(value string) error{
+	srcFsMeta := path.Join(hdfsSysDir, hdfsFsMeta)
+	fs.Lock()
+	defer fs.Unlock()
+	if fs.meta.RestoreFailedStorage == value {
+		return nil
+	}
+	fs.meta.RestoreFailedStorage = value
+	if err := saveToConfig(srcFsMeta, &fs.meta); err != nil {
+		return err
+	}
+
+	return nil
+}
 
 func opfsSetSafeMode(r *hdfs.SetSafeModeRequestProto) (*hdfs.SetSafeModeResponseProto, error) {
 	action := r.GetAction()
@@ -151,19 +176,22 @@ func opfsSetSafeMode(r *hdfs.SetSafeModeRequestProto) (*hdfs.SetSafeModeResponse
 	switch action.String() {
 	case hdfs.SafeModeActionProto_SAFEMODE_LEAVE.String():
 		globalFs.SetMode(modeNormal)
+		mode = globalFs.GetMode()
 	case hdfs.SafeModeActionProto_SAFEMODE_ENTER.String():
 		globalFs.SetMode(modeSafe)
+		mode = globalFs.GetMode()
 	case hdfs.SafeModeActionProto_SAFEMODE_GET.String():
 		mode = globalFs.GetMode()
-		log.Printf("get mode and no return ?? mode %v", mode)
 	case hdfs.SafeModeActionProto_SAFEMODE_FORCE_EXIT.String():
 		globalFs.SetMode(modeNormal)
+		mode = globalFs.GetMode()
+
 	default:
 		panic(fmt.Errorf("not support action %v", action.String()))
 	}
 
 	res := &hdfs.SetSafeModeResponseProto {
-		Result: proto.Bool(true),
+		Result: proto.Bool(mode == modeSafe),
 	}
 
 	return res, nil
