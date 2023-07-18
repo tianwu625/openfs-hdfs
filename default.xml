@@ -1,0 +1,34 @@
+<configuration>
+    <property>
+        <name>hadoop.security.group.mapping</name>
+	<value>org.apache.hadoop.security.CompositeGroupsMapping</value>
+	<description>
+           Class for user to group mapping (get groups for a given user) for ACL, which
+           makes use of other multiple providers to provide the service.
+        </description>
+    </property>
+    <property>
+        <name>hadoop.security.group.mapping.providers</name>
+        <value>openfsAuthService</value>
+        <description>
+           Comma separated of names of other providers to provide user to group mapping.
+           for openfs hdfs, only be openfsAuthService
+        </description>
+    </property>
+    <property>
+        <name>hadoop.security.group.mapping.providers.combined</name>
+        <value>true</value>
+        <description>
+           true or false to indicate whether groups from the providers are combined or not. The default value is true
+           If true, then all the providers will be tried to get groups and all the groups are combined to return as
+           the final results. Otherwise, openfs hdfs will fail when start
+        </description>
+    </property>
+    <property>
+        <name>hadoop.security.group.mapping.provider.openfsAuthService</name>
+        <value>github.openfs.security.OpenfsGroupsMapping</value>
+        <description>
+           Class for openfs auth service, and openfs hdfs will check the value when start
+        </description>
+    </property>
+</configuration>
