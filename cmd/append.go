@@ -17,6 +17,12 @@ func appendFileDec(b []byte) (proto.Message, error) {
 func appendFile(m proto.Message) (proto.Message, error) {
 	req := m.(*hdfs.AppendRequestProto)
 	log.Printf("src %v\nclientName %v\nFlag %v\n", req.GetSrc(), req.GetClientName(), req.GetFlag())
+	checkPosixPermission(&posixCheckPermissionRequest {
+		absPath: req.GetSrc(),
+		action: actionAppend,
+		user: "",
+		groups: []string{},
+	})
 	return opfsAppendFile(req)
 }
 
