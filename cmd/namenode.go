@@ -1,353 +1,335 @@
 package cmd
 
 import (
-	"encoding/binary"
-	"io"
+	"errors"
 	"log"
 	"net"
 
 	hadoop "github.com/openfs/openfs-hdfs/internal/protocol/hadoop_common"
-	hdfs "github.com/openfs/openfs-hdfs/internal/protocol/hadoop_hdfs"
 	"github.com/openfs/openfs-hdfs/internal/rpc"
 	"google.golang.org/protobuf/proto"
+	"github.com/openfs/openfs-hdfs/servernode"
 )
-
-// A handshake packet:
-// +-----------------------------------------------------------+
-// |  Header, 4 bytes ("hrpc")                                 |
-// +-----------------------------------------------------------+
-// |  Version, 1 byte (default verion 0x09)                    |
-// +-----------------------------------------------------------+
-// |  RPC service class, 1 byte (0x00)                         |
-// +-----------------------------------------------------------+
-// |  Auth protocol, 1 byte (Auth method None = 0x00)          |
-// +-----------------------------------------------------------+
-//
-//  If the auth protocol is something other than 'none', the authentication
-//  handshake happens here. Otherwise, everything can be sent as one packet.
-//
-// +-----------------------------------------------------------+
-// |  uint32 length of the next two parts                      |
-// +-----------------------------------------------------------+
-// |  varint length + RpcRequestHeaderProto                    |
-// +-----------------------------------------------------------+
-// |  varint length + IpcConnectionContextProto                |
-// +-----------------------------------------------------------+
-const (
-	rpcHeaderLen     = 7
-	magicLen         = 4
-	versionPos       = 4
-	rpcClassPos      = 5
-	authProtoPos     = 6
-	rpcVersion       = 9
-	serviceClass     = 0
-	noneAuthProtocol = 0
-)
-
-type NamenodeClient struct {
-	Version         byte
-	RpcVersionClass byte
-	AuthProtocol    byte
-	ClientId        []byte
-	CallId          int32
-	User            string
-	Conn            net.Conn
-}
 
 func doNamenodeHandshake(conn net.Conn) {
-	rpcheader := make([]byte, rpcHeaderLen)
-	if n, err := io.ReadFull(conn, rpcheader); n != rpcHeaderLen || err != nil {
-		log.Printf("read rpc header fail %v size %v\n", err, n)
-		conn.Close()
-		return
-	}
-
-	magic := string(rpcheader[:magicLen])
-	version := int(rpcheader[versionPos])
-	rpcVersionClass := int(rpcheader[rpcClassPos])
-	authprotocol := int(rpcheader[authProtoPos])
-	log.Printf("magic %v version %v class %v protocol %v\n", magic, version, rpcVersionClass, authprotocol)
-	rrh := new(hadoop.RpcRequestHeaderProto)
-	cc := new(hadoop.IpcConnectionContextProto)
-	if err := rpc.ReadRPCPacket(conn, rrh, cc); err != nil {
-		log.Printf("rpc request head and connect context fail %v", err)
-		conn.Close()
-		return
-	}
-	log.Printf("rrh kind %v\nrpcOp %v\ncallid %v\nclientid %v\n",
-		rrh.GetRpcKind(), rrh.GetRpcOp(), rrh.GetCallId(),
-		string(rrh.GetClientId()))
-	log.Printf("cc effect user %v\ncc real user %v\ncc protocol %v\n", cc.GetUserInfo().GetEffectiveUser(),
-		cc.GetUserInfo().GetRealUser(), cc.GetProtocol())
-	user := cc.GetUserInfo().GetEffectiveUser()
-	if user == "" {
-		user = cc.GetUserInfo().GetRealUser()
-	}
-	nc := NamenodeClient{
-		Version:         rpcheader[versionPos],
-		RpcVersionClass: rpcheader[rpcClassPos],
-		AuthProtocol:    rpcheader[authProtoPos],
-		ClientId:        rrh.GetClientId(),
-		CallId:          rrh.GetCallId(),
-		User:            user,
-		Conn:            conn,
-	}
-	log.Printf("check user %v, addr %v", user, conn.RemoteAddr().String())
-	host, _, err := net.SplitHostPort(conn.RemoteAddr().String())
+	client, err := rpc.ParseHandshake(conn)
 	if err != nil {
-		log.Fatal("splist host port fail %v", err)
+		log.Printf("parse handshake fail %v", err)
+		conn.Close()
+		return
 	}
-	log.Printf("naddr %v", host)
-	if !globalClientProtoAcl.CheckAllow(user, host) {
-		log.Fatal("no permission user %v host %v", user, host)
+	if !globalClientProtoAcl.CheckAllow(client.User, client.ClientIp) {
+		log.Fatal("no permission user %v host %v", client.User, client.ClientIp)
 		// should sent reply for no permission
 	}
-	go handleRpc(&nc)
+	go handleRpc(client)
 }
 
-type rpcDec func([]byte) (proto.Message, error)
-type rpcFunc func(proto.Message) (proto.Message, error)
-
-type rpcMethod struct {
-	Dec  rpcDec
-	Call rpcFunc
-}
-
-type rpcMethods struct {
-	methods map[string]rpcMethod
-}
-
-var globalrpcMethods rpcMethods
+var globalrpcMethods *rpc.RpcMethods
 
 func parseRequest(b []byte, req proto.Message) (proto.Message, error) {
-	msgLength, n := binary.Uvarint(b)
-	log.Printf("msgLength %v, n %v, b len %v\n", msgLength, n, len(b))
-	b = b[n:]
-	err := proto.Unmarshal(b[:msgLength], req)
-	if err != nil {
-		return nil, err
-	}
-	return req, nil
+	return rpc.ParseRequest(b, req)
 }
 
-func getFileInfoDec(b []byte) (proto.Message, error) {
-	req := new(hdfs.GetFileInfoRequestProto)
-	return parseRequest(b, req)
+var RpcClientNamenodeProtoV9 map[string]rpc.RpcMethod = map[string]rpc.RpcMethod{
+	"getFileInfo": rpc.RpcMethod{
+		Dec:  getFileInfoDec,
+		Call: getFileInfo,
+	},
+	"getListing": rpc.RpcMethod{
+		Dec:  getListingDec,
+		Call: getListing,
+	},
+	"delete": rpc.RpcMethod{
+		Dec:  deleteFileDec,
+		Call: deleteFile,
+	},
+	"mkdirs": rpc.RpcMethod{
+		Dec:  mkdirsDec,
+		Call: mkdirs,
+	},
+	"rename2": rpc.RpcMethod{
+		Dec:  rename2Dec,
+		Call: rename2,
+	},
+	"setPermission": rpc.RpcMethod{
+		Dec:  setPermissionDec,
+		Call: setPermission,
+	},
+	"setOwner": rpc.RpcMethod{
+		Dec:  setOwnerDec,
+		Call: setOwner,
+	},
+	"setTimes": rpc.RpcMethod{
+		Dec:  setTimesDec,
+		Call: setTimes,
+	},
+	"truncate": rpc.RpcMethod{
+		Dec:  truncateDec,
+		Call: truncate,
+	},
+	"getFsStats": rpc.RpcMethod{
+		Dec:  getFsStatsDec,
+		Call: getFsStats,
+	},
+	"getBlockLocations": rpc.RpcMethod{
+		Dec:  getBlockLocationsDec,
+		Call: getBlockLocations,
+	},
+	"getServerDefaults": rpc.RpcMethod{
+		Dec:  getServerDefaultsDec,
+		Call: getServerDefaults,
+	},
+	"create": rpc.RpcMethod{
+		Dec:  createDec,
+		Call: create,
+	},
+	"complete": rpc.RpcMethod{
+		Dec:  completeDec,
+		Call: complete,
+	},
+	"addBlock": rpc.RpcMethod{
+		Dec:  addBlockDec,
+		Call: addBlock,
+	},
+	"updateBlockForPipeline": rpc.RpcMethod{
+		Dec:  updateBlockForPipelineDec,
+		Call: updateBlockForPipeline,
+	},
+	"rename": rpc.RpcMethod{
+		Dec:  renameDec,
+		Call: rename,
+	},
+	"renewLease": rpc.RpcMethod{
+		Dec:  renewLeaseDec,
+		Call: renewLease,
+	},
+	"append": rpc.RpcMethod{
+		Dec:  appendFileDec,
+		Call: appendFile,
+	},
+	"updatePipeline": rpc.RpcMethod{
+		Dec:  updatePipelineDec,
+		Call: updatePipeline,
+	},
+	"concat": rpc.RpcMethod{
+		Dec:  concatFileDec,
+		Call: concatFile,
+	},
+	"getContentSummary": rpc.RpcMethod{
+		Dec:  getContentSummaryDec,
+		Call: getContentSummary,
+	},
+	"listEncryptionZones": rpc.RpcMethod{
+		Dec:  listEncryptionZonesDec,
+		Call: listEncryptionZones,
+	},
+	"modifyAclEntries": rpc.RpcMethod{
+		Dec:  modifyAclEntriesDec,
+		Call: modifyAclEntries,
+	},
+	"getAclStatus": rpc.RpcMethod{
+		Dec:  getAclStatusDec,
+		Call: getAclStatus,
+	},
+	"removeAcl": rpc.RpcMethod{
+		Dec:  removeAclDec,
+		Call: removeAcl,
+	},
+	"removeDefaultAcl": rpc.RpcMethod{
+		Dec:  removeDefaultAclDec,
+		Call: removeDefaultAcl,
+	},
+	"setAcl": rpc.RpcMethod{
+		Dec:  setAclDec,
+		Call: setAcl,
+	},
+	"getXAttrs": rpc.RpcMethod{
+		Dec:  getXAttrsDec,
+		Call: getXAttrs,
+	},
+	"setXAttr": rpc.RpcMethod{
+		Dec:  setXAttrDec,
+		Call: setXAttr,
+	},
+	"removeXAttr": rpc.RpcMethod{
+		Dec:  removeXAttrDec,
+		Call: removeXAttr,
+	},
+	"setReplication": rpc.RpcMethod{
+		Dec:  setReplicationDec,
+		Call: setReplication,
+	},
+	"setSafeMode": rpc.RpcMethod{
+		Dec:  setSafeModeDec,
+		Call: setSafeMode,
+	},
+	"getFsReplicatedBlockStats": rpc.RpcMethod{
+		Dec:  getFsReplicatedBlockStatsDec,
+		Call: getFsReplicatedBlockStats,
+	},
+	"getFsECBlockGroupStats": rpc.RpcMethod{
+		Dec:  getFsECBlockGroupStatsDec,
+		Call: getFsECBlockGroupStats,
+	},
+	"getDatanodeReport": rpc.RpcMethod{
+		Dec:  getDatanodeReportDec,
+		Call: getDatanodeReport,
+	},
+	"getSlowDatanodeReport": rpc.RpcMethod{
+		Dec:  getSlowDatanodeReportDec,
+		Call: getSlowDatanodeReport,
+	},
+	"saveNamespace": rpc.RpcMethod{
+		Dec:  saveNamespaceDec,
+		Call: saveNamespace,
+	},
+	"rollEdits": rpc.RpcMethod{
+		Dec:  rollEditsDec,
+		Call: rollEdits,
+	},
+	"restoreFailedStorage": rpc.RpcMethod{
+		Dec:  restoreFailedStorageDec,
+		Call: restoreFailedStorage,
+	},
+	"refreshNodes": rpc.RpcMethod{
+		Dec:  refreshNodesDec,
+		Call: refreshNodes,
+	},
+	"finalizeUpgrade": rpc.RpcMethod{
+		Dec:  finalizeUpgradeDec,
+		Call: finalizeUpgrade,
+	},
+	"upgradeStatus": rpc.RpcMethod{
+		Dec:  upgradeStatusDec,
+		Call: upgradeStatus,
+	},
+	"refreshServiceAcl": rpc.RpcMethod{
+		Dec:  refreshServiceAclDec,
+		Call: refreshServiceAcl,
+	},
+	"refreshUserToGroupsMappings": rpc.RpcMethod{
+		Dec:  refreshUserToGroupsMappingsDec,
+		Call: refreshUserToGroupsMappings,
+	},
+	"getGroupsForUser": rpc.RpcMethod{
+		Dec:  getGroupsForUserDec,
+		Call: getGroupsForUser,
+	},
+	"refreshSuperUserGroupsConfiguration": rpc.RpcMethod{
+		Dec:  refreshSuperUserGroupsConfigurationDec,
+		Call: refreshSuperUserGroupsConfiguration,
+	},
+	"refreshCallQueue": rpc.RpcMethod{
+		Dec:  refreshCallQueueDec,
+		Call: refreshCallQueue,
+	},
+	"getReconfigurationStatus": rpc.RpcMethod{
+		Dec:  getReconfigurationStatusDec,
+		Call: getReconfigurationStatus,
+	},
+	"listReconfigurableProperties": rpc.RpcMethod{
+		Dec:  listReconfigurablePropertiesDec,
+		Call: listReconfiguableProperties,
+	},
+	"startReconfiguration": rpc.RpcMethod{
+		Dec:  startReconfigurationDec,
+		Call: startReconfiguration,
+	},
+	"refresh": rpc.RpcMethod{
+		Dec:  refreshDec,
+		Call: refresh,
+	},
+	"setBalancerBandwidth": rpc.RpcMethod{
+		Dec:  setBalancerBandwidthDec,
+		Call: setBalancerBandwidth,
+	},
 }
-
-func getFileInfo(m proto.Message) (proto.Message, error) {
-	req := m.(*hdfs.GetFileInfoRequestProto)
-	log.Printf("src %v\n", req.GetSrc())
-	return opfsGetFileInfo(req)
-}
-
-func getListingDec(b []byte) (proto.Message, error) {
-	req := new(hdfs.GetListingRequestProto)
-	return parseRequest(b, req)
-}
-
-func getListing(m proto.Message) (proto.Message, error) {
-	req := m.(*hdfs.GetListingRequestProto)
-	log.Printf("src %v\nstart %v\nlocal%v\n", req.GetSrc(), req.GetStartAfter(), req.GetNeedLocation())
-	return opfsGetListing(req)
-}
-
 
 func init() {
-	globalrpcMethods = rpcMethods{
-		methods: map[string]rpcMethod{
-			"getFileInfo": rpcMethod{
-				Dec:  getFileInfoDec,
-				Call: getFileInfo,
-			},
-			"getListing":rpcMethod {
-				Dec: getListingDec,
-				Call: getListing,
-			},
-			"delete":rpcMethod {
-				Dec: deleteFileDec,
-				Call: deleteFile,
-			},
-			"mkdirs":rpcMethod {
-				Dec: mkdirsDec,
-				Call: mkdirs,
-			},
-			"rename2":rpcMethod {
-				Dec: rename2Dec,
-				Call: rename2,
-			},
-			"setPermission":rpcMethod {
-				Dec: setPermissionDec,
-				Call: setPermission,
-			},
-			"setOwner": rpcMethod {
-				Dec: setOwnerDec,
-				Call: setOwner,
-			},
-			"setTimes": rpcMethod {
-				Dec: setTimesDec,
-				Call: setTimes,
-			},
-			"truncate": rpcMethod {
-				Dec: truncateDec,
-				Call: truncate,
-			},
-			"getFsStats":rpcMethod {
-				Dec: getFsStatsDec,
-				Call: getFsStats,
-			},
-			"getBlockLocations":rpcMethod {
-				Dec: getBlockLocationsDec,
-				Call: getBlockLocations,
-			},
-			"getServerDefaults":rpcMethod {
-				Dec: getServerDefaultsDec,
-				Call:getServerDefaults,
-			},
-			"create":rpcMethod {
-				Dec: createDec,
-				Call: create,
-			},
-			"complete":rpcMethod {
-				Dec: completeDec,
-				Call: complete,
-			},
-			"addBlock":rpcMethod {
-				Dec: addBlockDec,
-				Call: addBlock,
-			},
-			"updateBlockForPipeline":rpcMethod {
-				Dec: updateBlockForPipelineDec,
-				Call:updateBlockForPipeline,
-			},
-			"rename":rpcMethod {
-				Dec:renameDec,
-				Call:rename,
-			},
-			"renewLease":rpcMethod {
-				Dec: renewLeaseDec,
-				Call:renewLease,
-			},
-			"append":rpcMethod {
-				Dec: appendFileDec,
-				Call:appendFile,
-			},
-			"updatePipeline":rpcMethod {
-				Dec: updatePipelineDec,
-				Call: updatePipeline,
-			},
-			"concat": rpcMethod {
-				Dec: concatFileDec,
-				Call: concatFile,
-			},
-			"getContentSummary": rpcMethod {
-				Dec: getContentSummaryDec,
-				Call: getContentSummary,
-			},
-			"listEncryptionZones":rpcMethod {
-				Dec: listEncryptionZonesDec,
-				Call: listEncryptionZones,
-			},
-			"modifyAclEntries":rpcMethod {
-				Dec: modifyAclEntriesDec,
-				Call: modifyAclEntries,
-			},
-			"getAclStatus": rpcMethod {
-				Dec: getAclStatusDec,
-				Call: getAclStatus,
-			},
-			"removeAcl": rpcMethod {
-				Dec: removeAclDec,
-				Call: removeAcl,
-			},
-			"removeDefaultAcl": rpcMethod {
-				Dec: removeDefaultAclDec,
-				Call: removeDefaultAcl,
-			},
-			"setAcl": rpcMethod {
-				Dec: setAclDec,
-				Call: setAcl,
-			},
-			"getXAttrs": rpcMethod {
-				Dec: getXAttrsDec,
-				Call: getXAttrs,
-			},
-			"setXAttr": rpcMethod {
-				Dec: setXAttrDec,
-				Call:setXAttr,
-			},
-			"removeXAttr":rpcMethod {
-				Dec: removeXAttrDec,
-				Call: removeXAttr,
-			},
-			"setReplication": rpcMethod {
-				Dec: setReplicationDec,
-				Call: setReplication,
-			},
-			"setSafeMode": rpcMethod {
-				Dec: setSafeModeDec,
-				Call: setSafeMode,
-			},
-			"getFsReplicatedBlockStats": rpcMethod {
-				Dec: getFsReplicatedBlockStatsDec,
-				Call: getFsReplicatedBlockStats,
-			},
-			"getFsECBlockGroupStats": rpcMethod {
-				Dec: getFsECBlockGroupStatsDec,
-				Call: getFsECBlockGroupStats,
-			},
-			"getDatanodeReport": rpcMethod {
-				Dec: getDatanodeReportDec,
-				Call: getDatanodeReport,
-			},
-			"getSlowDatanodeReport": rpcMethod {
-				Dec: getSlowDatanodeReportDec,
-				Call: getSlowDatanodeReport,
-			},
-			"saveNamespace": rpcMethod {
-				Dec: saveNamespaceDec,
-				Call: saveNamespace,
-			},
-			"rollEdits": rpcMethod {
-				Dec: rollEditsDec,
-				Call: rollEdits,
-			},
-			"restoreFailedStorage":rpcMethod {
-				Dec: restoreFailedStorageDec,
-				Call: restoreFailedStorage,
-			},
-			"refreshNodes": rpcMethod {
-				Dec: refreshNodesDec,
-				Call: refreshNodes,
-			},
-			"finalizeUpgrade":rpcMethod {
-				Dec: finalizeUpgradeDec,
-				Call: finalizeUpgrade,
-			},
-			"upgradeStatus": rpcMethod {
-				Dec: upgradeStatusDec,
-				Call: upgradeStatus,
-			},
-			"refreshServiceAcl": rpcMethod {
-				Dec: refreshServiceAclDec,
-				Call: refreshServiceAcl,
-			},
-		},
-	}
+	globalrpcMethods = rpc.NewRpcMethods()
+	globalrpcMethods.Register(RpcClientNamenodeProtoV9)
+	globalrpcMethods.Register(servernode.RpcDataServerProtoV9)
 }
 
-func handleRpc(nc *NamenodeClient) {
+func errToRpcProtoStatus(err error) *hadoop.RpcResponseHeaderProto_RpcStatusProto {
+	switch {
+	case errors.Is(err, net.ErrClosed):
+		return hadoop.RpcResponseHeaderProto_FATAL.Enum()
+	case err != nil:
+		return hadoop.RpcResponseHeaderProto_ERROR.Enum()
+	default:
+		return hadoop.RpcResponseHeaderProto_SUCCESS.Enum()
+	}
+
+	return hadoop.RpcResponseHeaderProto_SUCCESS.Enum()
+}
+
+func errToDetailErr(err error) *hadoop.RpcResponseHeaderProto_RpcErrorCodeProto {
+	switch {
+	default:
+		return hadoop.RpcResponseHeaderProto_ERROR_RPC_SERVER.Enum()
+	}
+
+	return hadoop.RpcResponseHeaderProto_ERROR_RPC_SERVER.Enum()
+}
+
+func errToException(err error) string {
+	switch {
+	case errors.Is(err, ErrNoRefresh):
+		return "java.lang.IllegalArgumentException"
+	default:
+		return ""
+	}
+
+	return ""
+}
+
+func errToErrMsg(err error) string {
+	switch {
+	default:
+		return ""
+	}
+
+	return ""
+}
+
+func MakeRpcResponse(client *rpc.RpcClient, rrh *hadoop.RpcRequestHeaderProto, err error) *hadoop.RpcResponseHeaderProto {
+	status := errToRpcProtoStatus(err)
+	callid := uint32(rrh.GetCallId())
+	clientid := client.ClientId
+
+	rrrh := &hadoop.RpcResponseHeaderProto{
+		CallId:              proto.Uint32(callid),
+		Status:              status,
+		ServerIpcVersionNum: proto.Uint32(rpc.RpcVersion),
+		ClientId:            clientid,
+	}
+
+	if err != nil {
+		rrrh.ExceptionClassName = proto.String(errToException(err))
+		rrrh.ErrorMsg = proto.String(errToErrMsg(err))
+		rrrh.ErrorDetail = errToDetailErr(err)
+	}
+
+	return rrrh
+}
+
+func handleRpc(client *rpc.RpcClient) {
 	for {
 		rrh := new(hadoop.RpcRequestHeaderProto)
 		rh := new(hadoop.RequestHeaderProto)
-		b, err := rpc.ReadRPCHeader(nc.Conn, rrh, rh)
+		b, err := rpc.ReadRPCHeader(client.Conn, rrh, rh)
 		if err != nil {
 			log.Printf("readHeader fail %v\n", err)
 			break
 		}
 		log.Printf("method %s, protname %s, protocol version %d\n", rh.GetMethodName(),
 			rh.GetDeclaringClassProtocolName(), rh.GetClientProtocolVersion())
-		ms := globalrpcMethods.methods[rh.GetMethodName()]
+		ms, err := globalrpcMethods.GetMethod(rh.GetMethodName())
+		if err != nil {
+			panic(err)
+		}
 		m, err := ms.Dec(b)
 		if err != nil {
 			log.Printf("dec fail %v\n", err)
@@ -356,23 +338,18 @@ func handleRpc(nc *NamenodeClient) {
 		r, err := ms.Call(m)
 		if err != nil {
 			log.Printf("call fail %v\n", err)
-			continue
 		}
-		status := hadoop.RpcResponseHeaderProto_SUCCESS
-		rrrh := &hadoop.RpcResponseHeaderProto{
-			CallId: proto.Uint32((uint32)(rrh.GetCallId())),
-			Status: &status,
-		}
+		rrrh := MakeRpcResponse(client, rrh, err)
 		b, err = rpc.MakeRPCPacket(rrrh, r)
 		if err != nil {
 			log.Printf("enc fail %v\n", err)
 			continue
 		}
-		_, err = nc.Conn.Write(b)
+		_, err = client.Conn.Write(b)
 		if err != nil {
 			log.Printf("send message fail %v\n", err)
 			continue
 		}
 	}
-	nc.Conn.Close()
+	client.Conn.Close()
 }

@@ -15,6 +15,17 @@ import (
 var errNotFound = errors.New("not found this entry")
 var errNotSupport = errors.New("not support parameter")
 
+func getListingDec(b []byte) (proto.Message, error) {
+	req := new(hdfs.GetListingRequestProto)
+	return parseRequest(b, req)
+}
+
+func getListing(m proto.Message) (proto.Message, error) {
+	req := m.(*hdfs.GetListingRequestProto)
+	log.Printf("src %v\nstart %v\nlocal%v\n", req.GetSrc(), req.GetStartAfter(), req.GetNeedLocation())
+	return opfsGetListing(req)
+}
+
 func opfsGetLastPos(entries []os.FileInfo, last string) (int, error) {
 	for i, e := range entries {
 		if e.Name() == last {

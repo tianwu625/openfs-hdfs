@@ -6,8 +6,12 @@ import (
 	"errors"
 	"net"
 	"log"
+	"fmt"
+	"time"
+	"net/url"
 
 	sacl "github.com/openfs/openfs-hdfs/internal/serviceacl"
+	iam  "github.com/openfs/openfs-hdfs/internal/iam"
 )
 
 type HadoopConf map[string]string
@@ -161,4 +165,267 @@ func (h HadoopConf) ParseEnableProtoAcl() bool {
 	}
 
 	return b
+}
+
+const (
+	HadoopSecurityGroupsCacheSecs = "hadoop.security.groups.cache.secs"
+	HadoopSecurityGroupsCacheBackgroundReload = "hadoop.security.groups.cache.background.reload"
+	HadoopSecurityGroupsCacheBackgroundReloadThread = "hadoop.security.groups.cache.background.reload.threads"
+	HadoopSecurityGroupsNegativeCacheSecs = "hadoop.security.groups.negative-cache.secs"
+	tenTimes = 10
+)
+
+func (h HadoopConf) getValue(key string) string {
+	s, ok := h[key]
+	if !ok {
+		panic(fmt.Errorf("get %v fail", key))
+	}
+
+	return s
+}
+
+func (h HadoopConf) ParseIAMConf() (*iam.IAMSysConf, error) {
+	stay, err := strconv.Atoi(h.getValue(HadoopSecurityGroupsCacheSecs))
+	if err != nil {
+		return nil, err
+	}
+	stayTime := time.Duration(stay) * time.Second
+	drop := stayTime * tenTimes
+	background, err := strconv.ParseBool(h.getValue(HadoopSecurityGroupsCacheBackgroundReload))
+	if err != nil {
+		return nil, err
+	}
+
+	thread, err := strconv.Atoi(h.getValue(HadoopSecurityGroupsCacheBackgroundReloadThread))
+	if err != nil {
+		return nil, err
+	}
+	neg, err := strconv.Atoi(h.getValue(HadoopSecurityGroupsNegativeCacheSecs))
+	if err != nil {
+		return nil, err
+	}
+	negTime := time.Duration(neg) * time.Second
+
+	groups, err := h.ParseRootGroups()
+	if err != nil {
+		return nil, err
+	}
+
+	return &iam.IAMSysConf {
+		Stay: stayTime,
+		Drop: drop,
+		BackGround: background,
+		BackGroundThread: thread,
+		Negative: negTime,
+		RootGroups: groups,
+	}, nil
+}
+
+const (
+	DfsPermissionsSuperuserGroup = "dfs.permissions.superusergroup"
+	CommaSeperator = ","
+)
+
+func (h HadoopConf) ParseRootGroups() ([]string, error) {
+	s, ok := h[DfsPermissionsSuperuserGroup]
+	if !ok {
+		panic(fmt.Errorf("get %v fail", DfsPermissionsSuperuserGroup))
+	}
+	groups := strings.Split(s, CommaSeperator)
+
+	return groups, nil
+}
+
+const (
+	DfsPermissionEnable = "dfs.permissions.enabled"
+)
+
+func (h HadoopConf) ParseEnableCheckPermission() bool {
+	s, ok := h[DfsPermissionEnable]
+	if !ok {
+		panic(fmt.Errorf("get %v fail", DfsPermissionEnable))
+	}
+
+	res, err := strconv.ParseBool(s)
+	if err != nil {
+		panic(fmt.Errorf("%v value %v can't covert to Bool", DfsPermissionEnable, s))
+	}
+
+	return res
+}
+
+const (
+	FsDefaultFs = "fs.defaultFS"
+)
+
+func (h HadoopConf)ParseNamenodeIpcPort() string {
+	s := h.getValue(FsDefaultFs)
+	url, err := url.Parse(s)
+	if err != nil {
+		panic(fmt.Errorf("parse namenode port %v fail %v", s, err))
+	}
+	return url.Port()
+}
+
+func buildVarMap(core HadoopConf) map[string]string {
+	res := make(map[string]string)
+
+	//get [port_number] value
+	res[PortVar] = core.ParseNamenodeIpcPort()
+
+	return res
+}
+const (
+	DfsBlockInvalidateLimit = "dfs.block.invalidate.limit"
+	DfsBlockPlacementEcClassname = "dfs.block.placement.ec.classname"
+	DfsBlockReplicatorClassname = "dfs.block.replicator.classname"
+	DfsDatanodePeerStatsEnabled = "dfs.datanode.peer.stats.enabled"
+	DfsHeartbeatInterval = "dfs.heartbeat.interval"
+	DfsImageParallelLoad = "dfs.image.parallel.load"
+	DfsNamenodeAvoidReadSlowDatanode = "dfs.namenode.avoid.read.slow.datanode"
+	DfsNamenodeBlockPlacementPolicyExcludeSlowNodesEnabled = "dfs.namenode.block-placement-policy.exclude-slow-nodes.enabled"
+	DfsNamenodeHeartBeatRecheckInterval = "dfs.namenode.heartbeat.recheck-interval"
+	DfsNamenodeMaxSlowpeerCollectNodes = "dfs.namenode.max.slowpeer.collect.nodes"
+	DfsNamenodeReplicationMaxStreams = "dfs.namenode.replication.max-streams"
+	DfsNamenodeReplicationMaxStreamsHardLimit = "dfs.namenode.replication.max-streams-hard-limit"
+	DfsNamenodeReplicationWorkMultiplierPerIteration = "dfs.namenode.replication.work.multiplier.per.iteration"
+	DfsStoragePolicySatisfierMode = "dfs.storage.policy.satisfier.mode"
+	FsProtectedDirectories = "fs.protected.directories"
+	HadoopCallerContextEnabled = "hadoop.caller.context.enabled"
+	IpcPortBackoffEnable = "ipc.[port_number].backoff.enable"
+	PortVar = "[port_number]"
+)
+
+var (
+	reconfigNamenodeKeys = []string {
+		DfsBlockInvalidateLimit,
+		DfsBlockPlacementEcClassname,
+		DfsBlockReplicatorClassname,
+		DfsDatanodePeerStatsEnabled,
+		DfsHeartbeatInterval,
+		DfsImageParallelLoad,
+		DfsNamenodeAvoidReadSlowDatanode,
+		DfsNamenodeBlockPlacementPolicyExcludeSlowNodesEnabled,
+		DfsNamenodeHeartBeatRecheckInterval,
+		DfsNamenodeMaxSlowpeerCollectNodes,
+		DfsNamenodeReplicationMaxStreams,
+		DfsNamenodeReplicationMaxStreamsHardLimit,
+		DfsNamenodeReplicationWorkMultiplierPerIteration,
+		DfsStoragePolicySatisfierMode,
+		FsProtectedDirectories,
+		HadoopCallerContextEnabled,
+	}
+	reconfigNamenodeKeysVar = map[string][]string {
+		IpcPortBackoffEnable: []string{PortVar,},
+	}
+	globalKeysVarMap map[string]string
+)
+
+func getRealKey(k string, varslist []string) string {
+	res := ""
+	for _, v := range varslist {
+		res = strings.ReplaceAll(k, v, globalKeysVarMap[v])
+	}
+
+	return res
+}
+
+func (h HadoopConf) ParseReconfigNamenode() (HadoopConf, error) {
+	res := HadoopConf{}
+	for _, k := range reconfigNamenodeKeys {
+		hv, ok := h[k]
+		if !ok {
+			continue
+		}
+		res[k] = hv
+	}
+
+	for k, v := range reconfigNamenodeKeysVar {
+		rk := getRealKey(k, v)
+		hv, ok := h[k]
+		if !ok {
+			hv, ok := h[rk]
+			if ok {
+				res[rk] = hv
+			}
+			continue
+		}
+		v, ok := h[rk]
+		if !ok {
+			res[rk] = hv
+			continue
+		}
+		res[rk] = v
+	}
+
+	return res, nil
+}
+
+func (h HadoopConf) DiffValue(n HadoopConf) HadoopConf {
+	res := HadoopConf{}
+
+	for k, v := range h {
+		nv, ok := n[k]
+		if !ok {
+			continue
+		}
+		if v != nv {
+			res[k] = v
+		}
+	}
+
+	return res
+}
+
+func (h HadoopConf) Clone() HadoopConf {
+	res := HadoopConf{}
+
+	for k, v := range h {
+		res[k] = v
+	}
+
+	return res
+}
+
+func (h HadoopConf) ParseReconfigDatanode() HadoopConf {
+
+	return HadoopConf{}
+}
+
+const (
+	DfsDatanodeAddress = "dfs.datanode.address"
+)
+
+func (h HadoopConf) ParseXferAddress() string {
+	return h.getValue(DfsDatanodeAddress)
+}
+
+const DfsDatanodeIpcAddress = "dfs.datanode.ipc.address"
+
+func (h HadoopConf) ParseDataIpcAddress() string {
+	return h.getValue(DfsDatanodeIpcAddress)
+}
+
+const DfsDatanodeHttpAddress = "dfs.datanode.http.address"
+
+func (h HadoopConf) ParseDataHttpAddress() string {
+	return h.getValue(DfsDatanodeHttpAddress)
+}
+
+const DfsDatanodeHttpsAddress = "dfs.datanode.https.address"
+
+func (h HadoopConf) ParseDataHttpsAddress() string {
+	return h.getValue(DfsDatanodeHttpsAddress)
+}
+
+const DfsNamenodeHttpAddress = "dfs.namenode.http-address"
+
+func (h HadoopConf) ParseNameHttpAddress() string {
+	return h.getValue(DfsNamenodeHttpAddress)
+}
+
+const DfsNamenodeHttpsAddress = "dfs.namenode.https-address"
+
+func (h HadoopConf) ParseNameHttpsAddress() string {
+	return h.getValue(DfsNamenodeHttpsAddress)
 }

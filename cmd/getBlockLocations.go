@@ -53,7 +53,7 @@ func minInt64(nums ...int64) int64{
 func getDatanodeInfo(eb *hdfs.ExtendedBlockProto) []*hdfs.DatanodeInfoProto {
 	datanodes := make([]*hdfs.DatanodeInfoProto, 0)
 	id := new(hdfs.DatanodeIDProto)
-	id.IpAddr = proto.String("127.0.0.1")
+	id.IpAddr = proto.String("0.0.0.0")
 	hostname, _ := os.Hostname()
 	id.HostName= proto.String(hostname)
 	id.DatanodeUuid = proto.String(hostname + "-" + "127.0.0.1")

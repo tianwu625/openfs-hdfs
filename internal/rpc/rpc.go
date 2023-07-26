@@ -6,6 +6,7 @@ import (
 	"encoding/binary"
 	"io"
 	"errors"
+	"log"
 
 	"google.golang.org/protobuf/proto"
 )
@@ -28,6 +29,10 @@ func MakeRPCPacket(msgs ...proto.Message) ([]byte, error) {
 
 	length := 0
 	for _, msg := range msgs {
+		if msg == nil {
+			log.Printf("skip msg is nil because of err is not nil")
+			continue
+		}
 		b, err := makePrefixedMessage(msg)
 		if err != nil {
 			return nil, err

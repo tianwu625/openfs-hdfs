@@ -20,6 +20,17 @@ const (
 	ProtoFlagSnapshot
 )
 
+func getFileInfoDec(b []byte) (proto.Message, error) {
+	req := new(hdfs.GetFileInfoRequestProto)
+	return parseRequest(b, req)
+}
+
+func getFileInfo(m proto.Message) (proto.Message, error) {
+	req := m.(*hdfs.GetFileInfoRequestProto)
+	log.Printf("src %v\n", req.GetSrc())
+	return opfsGetFileInfo(req)
+}
+
 func opfsgetSysInfo(fi os.FileInfo) (*opfs.OpfsStat, error) {
 	fsys := fi.Sys()
 	opfsStat, ok := fsys.(*opfs.OpfsStat)

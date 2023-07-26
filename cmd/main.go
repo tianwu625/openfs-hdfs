@@ -8,6 +8,8 @@ import (
 	"github.com/openfs/openfs-hdfs/internal/opfs"
 	"github.com/openfs/openfs-hdfs/datanode"
 	hconf "github.com/openfs/openfs-hdfs/hadoopconf"
+	iam "github.com/openfs/openfs-hdfs/internal/iam"
+	reconf "github.com/openfs/openfs-hdfs/internal/reconfig"
 )
 
 const (
@@ -18,13 +20,14 @@ const (
 var globalMeta *opfsAclCache
 var globalConfEnv *hconf.HadoopConfEnv
 var globalClientProtoAcl *serviceAclConf
+var globalIAMSys *iam.IAMSys
+var globalReconfig *reconf.ReconfigOnline
 
-func getClientProtoAcl() (*serviceAclConf, error) {
-	core, err := globalConfEnv.ReloadCore()
+func getClientProtoAcl(core hconf.HadoopConf) (*serviceAclConf, error) {
 	if !core.ParseEnableProtoAcl() {
 		return NewServiceAclConf(), nil
 	}
-	conf, err := globalConfEnv.ReloadAclService()
+	conf, err := globalConfEnv.ReloadServiceAcl()
 	if err != nil {
 		return nil, err
 	}
@@ -42,20 +45,74 @@ func getClientProtoAcl() (*serviceAclConf, error) {
 	return aclconf, nil
 }
 
-func StartNameNode() {
+func getIAM(core hconf.HadoopConf) (*iam.IAMSys, error) {
+	if !core.ParseEnableProtoAcl() && !core.ParseEnableCheckPermission() {
+		log.Printf("groups unneccessary to init for this case")
+	}
+	conf, err := core.ParseIAMConf()
+	if err != nil {
+		return nil, err
+	}
+	return iam.NewIAMSys(conf), nil
+}
+
+func getReconfig(core hconf.HadoopConf) (*reconf.ReconfigOnline, error) {
+	conf, err := core.ParseReconfigNamenode()
+	if err != nil {
+		return nil, err
+	}
+	return reconf.NewReconfig(conf), nil
+}
+
+func startNameIpcServer(core hconf.HadoopConf) {
 	//init meta cache
 	globalMeta = InitAclCache()
 	globalFs = InitFsMeta()
-	globalConfEnv = hconf.NewHadoopConfEnv()
 	var err error
-	globalClientProtoAcl, err = getClientProtoAcl()
+	globalIAMSys, err = getIAM(core)
 	if err != nil {
-		log.Fatal("getClientProtoAcl fail %v", err)
+		log.Fatal("getIAM fail:", err)
 	}
+	globalClientProtoAcl, err = getClientProtoAcl(core)
+	if err != nil {
+		log.Fatal("getClientProtoAcl fail:", err)
+	}
+	globalReconfig, err = getReconfig(core)
+	if err != nil {
+		log.Fatal("get namenodeReconf fail:", err)
+	}
+	/*
+	port := core.ParseNamenodeIpcPort()
+	if err := checkOpfsOccupy(port); err != nil {
+		log.Fatal("port invalid:", err)
+	}
+	ln, err := net.Listen("tcp", fmt.Sprintf(":%v", port))
+	*/
+	//for test simple olny support defaultport
 
 	ln, err := net.Listen("tcp", fmt.Sprintf(":%v", defaultNameNodePort))
 	if err != nil {
-		log.Fatal("listen fail", err)
+		log.Fatal("listen fail:", err)
+	}
+
+	for {
+		conn, err := ln.Accept()
+		if err != nil {
+			log.Fatal("accept fail:", err)
+		}
+		go doNamenodeHandshake(conn)
+	}
+}
+
+func startNameInfoServer(addr string) {
+	if err := checkAddressValid(addr); err != nil {
+		panic(fmt.Errorf("namenode http addr %v invalid %v", addr, err))
+	}
+	log.Printf("name info server start add %v", addr)
+	log.Printf("for support rpc number is %v", globalrpcMethods.GetLen())
+	ln, err := net.Listen("tcp", addr)
+	if err != nil {
+		log.Fatal("listen fail:", err)
 	}
 
 	for {
@@ -63,12 +120,43 @@ func StartNameNode() {
 		if err != nil {
 			log.Fatal("accept")
 		}
-		go doNamenodeHandshake(conn)
+		log.Printf("addr %v get data!!!!!\n", addr)
+		conn.Close()
 	}
 }
 
-func startXferServer() {
-	ln, err := net.Listen("tcp", fmt.Sprintf(":%v", defaultDataNodeXferPort))
+func startNameSecurityInfoServer(addr string) {
+	if err := checkAddressValid(addr); err != nil {
+		panic(fmt.Errorf("namenode https addr %v invalid %v", addr, err))
+	}
+	log.Printf("name Security info server start add %v", addr)
+	ln, err := net.Listen("tcp", addr)
+	if err != nil {
+		log.Fatal("listen fail:", err)
+	}
+
+	for {
+		conn, err := ln.Accept()
+		if err != nil {
+			log.Fatal("accept fail:", err)
+		}
+		log.Printf("addr %v get data!!!!!\n", addr)
+		conn.Close()
+	}
+}
+
+func StartNameNode(core hconf.HadoopConf) {
+	go startNameInfoServer(core.ParseNameHttpAddress())
+	go startNameSecurityInfoServer(core.ParseNameHttpsAddress())
+	startNameIpcServer(core)
+}
+
+func startXferServer(addr string) {
+	if err := checkAddressValid(addr); err != nil {
+		panic(fmt.Errorf("xferServer addr %v invalid %v", addr, err))
+	}
+	log.Printf("datanode xfert start addr %v", addr)
+	ln, err := net.Listen("tcp", addr)
 	if err != nil {
 		log.Fatal("listen fail", err)
 	}
@@ -82,10 +170,14 @@ func startXferServer() {
 	}
 }
 
-func startNodeIpcServer() {
-	ln, err := net.Listen("tcp", fmt.Sprintf(":%v", 50020))
+func startDataIpcServer(addr string) {
+	if err := checkAddressValid(addr); err != nil {
+		panic(fmt.Errorf("datanode http addr %v invalid %v", addr, err))
+	}
+	log.Printf("data info server start add %v", addr)
+	ln, err := net.Listen("tcp", addr)
 	if err != nil {
-		log.Fatal("listen fail", err)
+		log.Fatal("listen fail:", err)
 	}
 
 	for {
@@ -93,53 +185,71 @@ func startNodeIpcServer() {
 		if err != nil {
 			log.Fatal("accept")
 		}
-		log.Printf("ipc %v get data!!!!!\n", 50020)
-		conn.Close()
+		go datanode.DoDatanodeHandshake(conn)
 	}
 }
 
-func startDataInfoServer() {
-	ln, err := net.Listen("tcp", fmt.Sprintf(":%v", 50075))
+
+func startDataInfoServer(addr string) {
+	if err := checkAddressValid(addr); err != nil {
+		panic(fmt.Errorf("datanode http addr %v invalid %v", addr, err))
+	}
+	log.Printf("data info server start add %v", addr)
+	ln, err := net.Listen("tcp", addr)
 	if err != nil {
-		log.Fatal("listen fail", err)
+		log.Fatal("listen fail:", err)
 	}
 
 	for {
 		conn, err := ln.Accept()
 		if err != nil {
-			log.Fatal("accept")
+			log.Fatal("accept fail:", err)
 		}
-		log.Printf("ipc %v get data!!!!!\n", 50075)
+		log.Printf("addr %v get data!!!!!\n", addr)
 		conn.Close()
 	}
 }
 
-func startDataSecurityInfoServer() {
-	ln, err := net.Listen("tcp", fmt.Sprintf(":%v", 50475))
+func startDataSecurityInfoServer(addr string) {
+	if err := checkAddressValid(addr); err != nil {
+		panic(fmt.Errorf("datanode https addr %v invalid %v", addr, err))
+	}
+	log.Printf("data Security info server start add %v", addr)
+	ln, err := net.Listen("tcp", addr)
 	if err != nil {
-		log.Fatal("listen fail", err)
+		log.Fatal("listen fail:", err)
 	}
 
 	for {
 		conn, err := ln.Accept()
 		if err != nil {
-			log.Fatal("accept")
+			log.Fatal("accept fail:", err)
 		}
-		log.Printf("ipc %v get data!!!!!\n", 50475)
+		log.Printf("addr %v get data!!!!!\n", addr)
 		conn.Close()
 	}
 }
 
+func StartDataNode(core hconf.HadoopConf) {
+	go startXferServer(core.ParseXferAddress())
+	go startDataIpcServer(core.ParseDataIpcAddress())
+	go startDataInfoServer(core.ParseDataHttpAddress())
+	go startDataSecurityInfoServer(core.ParseDataHttpsAddress())
+}
 
-func StartDataNode() {
-	go startXferServer()
-	go startNodeIpcServer()
-	go startDataInfoServer()
-	go startDataSecurityInfoServer()
+func getCoreConf() hconf.HadoopConf {
+	globalConfEnv = hconf.NewHadoopConfEnv()
+	core, err := globalConfEnv.ReloadCore()
+	if err != nil {
+		panic(fmt.Errorf("get core conf fail %v", err))
+	}
+
+	return core
 }
 
 func Main(args []string) {
 	opfs.Init("/")
-	StartDataNode()
-	StartNameNode()
+	core := getCoreConf()
+	StartDataNode(core)
+	StartNameNode(core)
 }
