@@ -29,6 +29,7 @@ func setSafeMode(m proto.Message) (proto.Message, error) {
 type opfsHdfsFsMeta struct {
 	Mode string `json:"mode, omitempty"`
 	RestoreFailedStorage string `json: "restoreFail, omitempty"`
+	AllowSnapshot bool `json: "allowSnapshot, omitempty"`
 }
 
 type opfsHdfsFs struct {
@@ -100,6 +101,7 @@ func defaultFsMeta() *opfsHdfsFsMeta {
 	return &opfsHdfsFsMeta {
 		Mode: modeNormal,
 		RestoreFailedStorage: onValue,
+		AllowSnapshot: false,
 	}
 }
 
@@ -164,6 +166,28 @@ func (fs *opfsHdfsFs) SetRestoreFailedStorage(value string) error{
 	}
 
 	return nil
+}
+
+func (fs *opfsHdfsFs) SetAllowSnapshot(value bool) error {
+	srcFsMeta := path.Join(hdfsSysDir, hdfsFsMeta)
+	fs.Lock()
+	defer fs.Unlock()
+	if fs.meta.AllowSnapshot == value {
+		return nil
+	}
+	fs.meta.AllowSnapshot = value
+	if err := saveToConfig(srcFsMeta, &fs.meta); err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func (fs *opfsHdfsFs) GetAllowSnapshot() bool {
+	fs.Lock()
+	defer fs.Unlock()
+
+	return fs.meta.AllowSnapshot
 }
 
 func opfsSetSafeMode(r *hdfs.SetSafeModeRequestProto) (*hdfs.SetSafeModeResponseProto, error) {

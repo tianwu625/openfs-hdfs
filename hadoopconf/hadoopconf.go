@@ -429,3 +429,67 @@ const DfsNamenodeHttpsAddress = "dfs.namenode.https-address"
 func (h HadoopConf) ParseNameHttpsAddress() string {
 	return h.getValue(DfsNamenodeHttpsAddress)
 }
+
+const (
+	kBytes = 1024
+	mBytes = 1024 * kBytes
+	gBytes = 1024 * mBytes
+	tBytes = 1024 * gBytes
+	pBytes = 1024 * tBytes
+	eBytes = 1024 * pBytes
+)
+
+func getNumFromUintByte(k, v, u string) uint64 {
+	n, err := strconv.ParseUint(strings.TrimSuffix(v, u), 10, 64)
+	if err != nil {
+		panic(fmt.Errorf("fail to get num %v, %v, %v, %v", k, v, u, err))
+	}
+
+	return n
+}
+
+func (h HadoopConf) uintByteToNum (k string) uint64 {
+	v := h.getValue(k)
+	switch {
+	case strings.HasSuffix(v, "k"):
+		return kBytes * getNumFromUintByte(k, v, "k")
+	case strings.HasSuffix(v, "m"):
+		return mBytes * getNumFromUintByte(k, v, "m")
+	case strings.HasSuffix(v, "g"):
+		return gBytes * getNumFromUintByte(k, v, "g")
+	case strings.HasSuffix(v, "t"):
+		return tBytes * getNumFromUintByte(k, v, "t")
+	case strings.HasSuffix(v, "p"):
+		return pBytes * getNumFromUintByte(k, v, "p")
+	case strings.HasSuffix(v, "e"):
+		return pBytes * getNumFromUintByte(k, v, "e")
+	default:
+	}
+	n, err := strconv.ParseUint(v, 10, 64)
+	if err != nil {
+		panic(fmt.Errorf("fail to parse %v, %v, %v", k, v, err))
+	}
+	return n
+}
+
+const DfsDatanodeBalanceBandwidthPerSec = "dfs.datanode.balance.bandwidthPerSec"
+
+
+func (h HadoopConf) ParseDatanodeBandwidth() uint64 {
+	return h.uintByteToNum(DfsDatanodeBalanceBandwidthPerSec)
+}
+
+func (h HadoopConf) ParseUint64(key string) uint64 {
+	s := h.getValue(key)
+	res, err := strconv.ParseUint(s, 10, 64)
+	if err != nil {
+		panic(fmt.Errorf("%v is %v parse to uint64 fail %v", key, s, err))
+	}
+	return res
+}
+
+const DfsBlockSize = "dfs.blocksize"
+
+func (h HadoopConf) ParseBlockSize() uint64 {
+	return h.ParseUint64(DfsBlockSize)
+}

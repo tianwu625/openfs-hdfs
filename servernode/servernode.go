@@ -4,7 +4,7 @@ import (
 	"github.com/openfs/openfs-hdfs/internal/rpc"
 )
 
-var RpcDataServerProtoV9 map[string]rpc.RpcMethod = map[string]rpc.RpcMethod{
+var RpcDataServerProtoV1 map[string]rpc.RpcMethod = map[string]rpc.RpcMethod{
 	"versionRequest": rpc.RpcMethod{
 		Dec:  versionRequestDec,
 		Call: versionRequest,

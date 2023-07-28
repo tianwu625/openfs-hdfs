@@ -109,7 +109,6 @@ func startNameInfoServer(addr string) {
 		panic(fmt.Errorf("namenode http addr %v invalid %v", addr, err))
 	}
 	log.Printf("name info server start add %v", addr)
-	log.Printf("for support rpc number is %v", globalrpcMethods.GetLen())
 	ln, err := net.Listen("tcp", addr)
 	if err != nil {
 		log.Fatal("listen fail:", err)
@@ -158,13 +157,13 @@ func startXferServer(addr string) {
 	log.Printf("datanode xfert start addr %v", addr)
 	ln, err := net.Listen("tcp", addr)
 	if err != nil {
-		log.Fatal("listen fail", err)
+		log.Fatal("listen fail:", err)
 	}
 
 	for {
 		conn, err := ln.Accept()
 		if err != nil {
-			log.Fatal("accept")
+			log.Fatal("accept fail:", err)
 		}
 		go datanode.HandleDataXfer(conn)
 	}
@@ -174,7 +173,7 @@ func startDataIpcServer(addr string) {
 	if err := checkAddressValid(addr); err != nil {
 		panic(fmt.Errorf("datanode http addr %v invalid %v", addr, err))
 	}
-	log.Printf("data info server start add %v", addr)
+	log.Printf("data ipc server start add %v", addr)
 	ln, err := net.Listen("tcp", addr)
 	if err != nil {
 		log.Fatal("listen fail:", err)
@@ -231,6 +230,10 @@ func startDataSecurityInfoServer(addr string) {
 }
 
 func StartDataNode(core hconf.HadoopConf) {
+	err := datanode.DatanodeInit(core)
+	if err != nil {
+		panic(fmt.Errorf("init datanode fail %v", err))
+	}
 	go startXferServer(core.ParseXferAddress())
 	go startDataIpcServer(core.ParseDataIpcAddress())
 	go startDataInfoServer(core.ParseDataHttpAddress())

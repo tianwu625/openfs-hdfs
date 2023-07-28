@@ -36,15 +36,47 @@ func opfsGetLastPos(entries []os.FileInfo, last string) (int, error) {
 	return -1, errNotFound
 }
 
+const (
+	hdfsRootSnapDir = ".hdfs.snapshot"
+)
+
 func filterSysDir(entries []os.FileInfo) []os.FileInfo {
-	for i, e := range entries {
-		if e.Name() == hdfsSysDirName {
-			entries = append(entries[:i], entries[i+1:]...)
-			break
+	log.Printf("entries %v", entries)
+outer:
+	for {
+		for i, e := range entries {
+			if e.Name() == hdfsSysDirName {
+				entries = append(entries[:i], entries[i+1:]...)
+				continue outer
+			}
+			if e.Name() == hdfsRootSnapDir {
+				entries = append(entries[:i], entries[i+1:]...)
+				continue outer
+			}
 		}
+		break
 	}
 
 	return entries
+}
+
+const (
+	snapshotDir = ".snapshot"
+	rootDir = "/"
+)
+
+func specialProccessReserveDirs(src string, dlist []*hdfs.HdfsFileStatusProto) []*hdfs.HdfsFileStatusProto {
+	if path.Base(src) == snapshotDir {
+		replaceSnapDir := path.Dir(src) == rootDir
+		for _, d := range dlist {
+			if replaceSnapDir {
+				d.Path = []byte(path.Join(rootDir, snapshotDir, path.Base(string(d.Path))))
+			}
+			d.Length = proto.Uint64(0)
+		}
+	}
+
+	return dlist
 }
 
 func opfsGetListing(r *hdfs.GetListingRequestProto) (proto.Message, error) {
@@ -56,7 +88,13 @@ func opfsGetListing(r *hdfs.GetListingRequestProto) (proto.Message, error) {
 		return res, errNotSupport
 	}
 
-	f, err := opfs.Open(src)
+	readdirSrc := src
+	//process snapshot name is different for hdfs and openfs
+	if src == path.Join("/", snapshotDir) {
+		readdirSrc = path.Join("/", hdfsRootSnapDir)
+	}
+
+	f, err := opfs.Open(readdirSrc)
 	if err != nil {
 		log.Printf("open %v fail %v\n", src, err)
 		return res, err
@@ -80,10 +118,10 @@ func opfsGetListing(r *hdfs.GetListingRequestProto) (proto.Message, error) {
 	res.DirList = new(hdfs.DirectoryListingProto)
 	dlist := make([]*hdfs.HdfsFileStatusProto, 0, len(entries))
 	for _, e := range entries {
-		d := opfsHdfsFileStatus(path.Join(src, e.Name()), e, nil)
+		d := opfsHdfsFileStatus(path.Join(readdirSrc, e.Name()), e, nil)
 		dlist = append(dlist, d)
 	}
-	res.DirList.PartialListing = dlist
+	res.DirList.PartialListing = specialProccessReserveDirs(src, dlist)
 	res.DirList.RemainingEntries = proto.Uint32(0)
 
 	return res, nil

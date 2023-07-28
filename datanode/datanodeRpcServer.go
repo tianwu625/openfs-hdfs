@@ -7,6 +7,7 @@ import (
 
 	hadoop "github.com/openfs/openfs-hdfs/internal/protocol/hadoop_common"
 	"github.com/openfs/openfs-hdfs/internal/rpc"
+	"google.golang.org/protobuf/proto"
 )
 
 func errToRpcProtoStatus(err error) *hadoop.RpcResponseHeaderProto_RpcStatusProto {
@@ -66,13 +67,49 @@ func DoDatanodeHandshake(conn net.Conn) {
 	go rpc.HandleRpc(client, ops)
 }
 
-var RpcClientDatanodeProtoV9 map[string]rpc.RpcMethod = map[string]rpc.RpcMethod {
+var RpcClientDatanodeProtoV1 map[string]rpc.RpcMethod = map[string]rpc.RpcMethod {
+	"refreshNamenodes": {
+		Dec: refreshNamenodesDec,
+		Call: refreshNamenodes,
+	},
+	"getVolumeReport": {
+		Dec: getVolumeReportDec,
+		Call: getVolumeReport,
+	},
+	"deleteBlockPool": {
+		Dec: deleteBlockPoolDec,
+		Call: deleteBlockPool,
+	},
+	"getBalancerBandwidth": {
+		Dec: getBalancerBandwidthDec,
+		Call: getBalancerBandwidth,
+	},
+	"shutdownDatanode": {
+		Dec: shutdownDatanodeDec,
+		Call: shutdownDatanode,
+	},
+	"evictWriters": {
+		Dec: evictWritersDec,
+		Call: evictWriters,
+	},
+	"getDatanodeInfo": {
+		Dec: getDatanodeInfoDec,
+		Call: getDatanodeInfo,
+	},
+	"triggerBlockReport": {
+		Dec: triggerBlockReportDec,
+		Call: triggerBlockReport,
+	},
+}
 
+func parseRequest(b []byte, req proto.Message) (proto.Message, error) {
+	return rpc.ParseRequest(b, req)
 }
 
 var globalrpcMethods *rpc.RpcMethods
 
 func init() {
 	globalrpcMethods = rpc.NewRpcMethods()
-	globalrpcMethods.Register(RpcClientDatanodeProtoV9)
+	globalrpcMethods.Register(RpcClientDatanodeProtoV1)
+	log.Printf("datanode rpc methods len %v", globalrpcMethods.GetLen())
 }

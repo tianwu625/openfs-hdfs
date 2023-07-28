@@ -523,6 +523,7 @@ func MakeDirAll(path string, perm os.FileMode) error {
 		}
 		err := MakeDir(dirPath, perm)
 		if err != nil && !errors.Is(err, os.ErrExist) {
+			log.Printf("dirPath %v, err %v", dirPath, err)
 			return err
 		}
 		p.WriteString(fmt.Sprintf("/%s", s))

@@ -23,7 +23,12 @@ func deleteFileDec(b []byte) (proto.Message, error) {
 func deleteFile(m proto.Message) (proto.Message, error) {
 	req := m.(*hdfs.DeleteRequestProto)
 	log.Printf("src %v\nrecursive %v\n", req.GetSrc(), req.GetRecursive())
-	return opfsDeleteFile(req)
+	res, err := opfsDeleteFile(req)
+	if err != nil {
+		return nil, err
+	}
+
+	return res, nil
 }
 
 func opfsRemoveAllPath(dirPath string) (err error) {

@@ -4,9 +4,12 @@ import (
 	"net"
 	"fmt"
 	"log"
+	"sync"
+	"time"
 
 	xfer "github.com/openfs/openfs-hdfs/internal/transfer"
 	hdfs "github.com/openfs/openfs-hdfs/internal/protocol/hadoop_hdfs"
+	hconf "github.com/openfs/openfs-hdfs/hadoopconf"
 )
 
 type dataTask struct {
@@ -75,4 +78,70 @@ func HandleDataXfer(conn net.Conn) {
 	}
 
 	conn.Close()
+}
+
+type datanodeConf struct {
+	bandwidth uint64
+	blocksize uint64
+}
+
+type datanodeSys struct {
+	*sync.RWMutex
+	conf *datanodeConf
+}
+
+func (sys *datanodeSys) GetBandwidth() uint64 {
+	sys.RLock()
+	defer sys.RUnlock()
+	return sys.conf.bandwidth
+}
+
+func (sys *datanodeSys) GetBlockSize() uint64 {
+	sys.RLock()
+	defer sys.RUnlock()
+	return sys.conf.blocksize
+}
+
+func (sys *datanodeSys) SetBandwidth(bandwidth uint64) error {
+	sys.Lock()
+	defer sys.Unlock()
+	sys.conf.bandwidth = bandwidth
+	return nil
+}
+
+func (sys *datanodeSys) SetBlockSize(blocksize uint64) error {
+	sys.Lock()
+	defer sys.Unlock()
+	sys.conf.blocksize = blocksize
+	return nil
+}
+
+func (sys *datanodeSys) SetDataConfFromCore(core hconf.HadoopConf) error {
+	sys.Lock()
+	defer sys.Unlock()
+	sys.conf.bandwidth = core.ParseDatanodeBandwidth()
+	sys.conf.blocksize = core.ParseBlockSize()
+
+	return nil
+}
+
+func NewDatanodeSys(core hconf.HadoopConf) *datanodeSys {
+	conf := &datanodeConf {
+		bandwidth: core.ParseDatanodeBandwidth(),
+		blocksize: core.ParseBlockSize(),
+	}
+
+	return &datanodeSys {
+		RWMutex: &sync.RWMutex{},
+		conf: conf,
+	}
+}
+
+var globalDatanodeSys *datanodeSys
+var globalStartTime time.Time
+
+func DatanodeInit(core hconf.HadoopConf) error {
+	globalDatanodeSys = NewDatanodeSys(core)
+	globalStartTime = time.Now()
+	return nil
 }

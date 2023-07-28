@@ -31,7 +31,7 @@ func parseRequest(b []byte, req proto.Message) (proto.Message, error) {
 	return rpc.ParseRequest(b, req)
 }
 
-var RpcClientNamenodeProtoV9 map[string]rpc.RpcMethod = map[string]rpc.RpcMethod{
+var RpcClientNamenodeProtoV1 map[string]rpc.RpcMethod = map[string]rpc.RpcMethod{
 	"getFileInfo": rpc.RpcMethod{
 		Dec:  getFileInfoDec,
 		Call: getFileInfo,
@@ -244,12 +244,41 @@ var RpcClientNamenodeProtoV9 map[string]rpc.RpcMethod = map[string]rpc.RpcMethod
 		Dec:  setBalancerBandwidthDec,
 		Call: setBalancerBandwidth,
 	},
+	"allowSnapshot": rpc.RpcMethod {
+		Dec: allowSnapshotDec,
+		Call: allowSnapshot,
+	},
+	"disallowSnapshot": rpc.RpcMethod {
+		Dec: disallowSnapshotDec,
+		Call: disallowSnapshot,
+	},
+	"metaSave": rpc.RpcMethod {
+		Dec: metaSaveDec,
+		Call: metaSave,
+	},
+	"listOpenFiles": rpc.RpcMethod {
+		Dec: listOpenFilesDec,
+		Call: listOpenFiles,
+	},
+	"createSnapshot": rpc.RpcMethod {
+		Dec: createSnapshotDec,
+		Call: createSnapshot,
+	},
+	"deleteSnapshot": rpc.RpcMethod {
+		Dec: deleteSnapshotDec,
+		Call: deleteSnapshot,
+	},
+	"renameSnapshot": rpc.RpcMethod {
+		Dec: renameSnapshotDec,
+		Call: renameSnapshot,
+	},
 }
 
 func init() {
 	globalrpcMethods = rpc.NewRpcMethods()
-	globalrpcMethods.Register(RpcClientNamenodeProtoV9)
-	globalrpcMethods.Register(servernode.RpcDataServerProtoV9)
+	globalrpcMethods.Register(RpcClientNamenodeProtoV1)
+	globalrpcMethods.Register(servernode.RpcDataServerProtoV1)
+	log.Printf("namenode rpc methods len %v", globalrpcMethods.GetLen())
 }
 
 func errToRpcProtoStatus(err error) *hadoop.RpcResponseHeaderProto_RpcStatusProto {
@@ -278,8 +307,12 @@ func errToException(err error) string {
 	switch {
 	case errors.Is(err, ErrNoRefresh):
 		return "java.lang.IllegalArgumentException"
+	case errors.Is(err, errOnlySupportRoot):
+		return "org.apache.hadoop.hdfs.protocol.SnapshotException"
+	case errors.Is(err, errDisallowSnapshot):
+		return "org.apache.hadoop.hdfs.protocol.SnapshotException"
 	default:
-		return ""
+		return err.Error()
 	}
 
 	return ""
@@ -287,6 +320,10 @@ func errToException(err error) string {
 
 func errToErrMsg(err error) string {
 	switch {
+	case errors.Is(err, errOnlySupportRoot):
+		return "openfs hdfs snapshot only support operate root directory"
+	case errors.Is(err, errDisallowSnapshot):
+		return  err.Error()
 	default:
 		return ""
 	}
