@@ -99,6 +99,7 @@ func opfsGetListing(r *hdfs.GetListingRequestProto) (proto.Message, error) {
 		log.Printf("open %v fail %v\n", src, err)
 		return res, err
 	}
+	defer f.Close()
 
 	entries, err := f.Readdir(-1)
 	if err != nil && !errors.Is(err, io.EOF) {

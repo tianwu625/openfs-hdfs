@@ -34,7 +34,7 @@ func cleanDefaultAcl(acl *opfsHdfsAcl) {
 func opfsRemoveDefaultAcl(r *hdfs.RemoveDefaultAclRequestProto) (*hdfs.RemoveDefaultAclResponseProto, error) {
 	src := r.GetSrc()
 
-	acl, err := globalMeta.GetAclCacheEntry(src)
+	acl, err := globalMeta.GetAcl(src)
 	if err != nil {
 		log.Printf("get acl from cache fail")
 		return nil, err
@@ -57,7 +57,7 @@ func opfsRemoveDefaultAcl(r *hdfs.RemoveDefaultAclRequestProto) (*hdfs.RemoveDef
 		return nil, err
 	}
 
-	err = globalMeta.SetAclCacheEntry(src, acl)
+	err = globalMeta.SetAcl(src, acl)
 	if err != nil {
 		log.Printf("fail to update cache %v", err)
 		return nil, err

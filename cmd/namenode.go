@@ -272,6 +272,14 @@ var RpcClientNamenodeProtoV1 map[string]rpc.RpcMethod = map[string]rpc.RpcMethod
 		Dec: renameSnapshotDec,
 		Call: renameSnapshot,
 	},
+	"setQuota": rpc.RpcMethod {
+		Dec: setQuotaDec,
+		Call: setQuota,
+	},
+	"getSnapshottableDirListing": rpc.RpcMethod {
+		Dec: getSnapshottableDirListingDec,
+		Call: getSnapshottableDirListing,
+	},
 }
 
 func init() {

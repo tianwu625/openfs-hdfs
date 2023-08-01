@@ -356,7 +356,7 @@ func opfsSetAclEntries(r *hdfs.ModifyAclEntriesRequestProto)(*hdfs.ModifyAclEntr
 	src := r.GetSrc()
 	acls := r.GetAclSpec()
 
-	acl, err := globalMeta.GetAclCacheEntry(src)
+	acl, err := globalMeta.GetAcl(src)
 	if err != nil {
 		log.Printf("get acl from cache fail")
 		return nil, err
@@ -407,7 +407,7 @@ func opfsSetAclEntries(r *hdfs.ModifyAclEntriesRequestProto)(*hdfs.ModifyAclEntr
 		acl.SetGroup = true
 	}
 
-	err = globalMeta.SetAclCacheEntry(src, acl)
+	err = globalMeta.SetAcl(src, acl)
 	if err != nil {
 		log.Printf("fail to update cache %v", err)
 		return nil, err

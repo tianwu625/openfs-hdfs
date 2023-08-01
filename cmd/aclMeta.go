@@ -31,11 +31,21 @@ type opfsHdfsAcl struct {
 	DefaultOther uint32 `json:"defaultother, omitempty"`
 }
 
-type opfsAclCacheEntry struct {
+type opfsHdfsNamespaceQuota struct {
+	SetQuota bool `json:"setQuota, omitempty"`
+	Quota uint64 `jsong:"numQuota, omitempty"`
+}
+
+type opfsHdfsMeta struct {
+	Acl *opfsHdfsAcl `json:"acl, omitempty"`
+	Quota *opfsHdfsNamespaceQuota `json:"quota, omitempty"`
+}
+
+type opfsMetaCacheEntry struct {
 	UpdateTime time.Time //file modify time
 	ConfigTime time.Time //config file modify time
 	StayTime time.Time
-	Acl *opfsHdfsAcl
+	meta *opfsHdfsMeta
 }
 
 const (
@@ -43,28 +53,27 @@ const (
 	DefaultLifeTime = 60
 )
 
-type opfsAclCache struct {
+type opfsMetaCache struct {
 	MaxEntries int
 	CurrentEntries int
 	*sync.RWMutex
-	Acls map[string]*opfsAclCacheEntry
+	metas map[string]*opfsMetaCacheEntry
 }
 
 var (
 	errNotPurge error = errors.New("Full but not purge any entry")
-	errInvalidParameter error = errors.New("Invalid parameter")
+	errNoSpace error = errors.New("No space for new entry in cache")
+	errCacheInvalid error = errors.New("cache entry is invalid")
 )
-
-func (c *opfsAclCache) purgeEntryWithoutLock(purgecount int) error {
-	if purgecount == 0 {
-		return errInvalidParameter
-	}
+//this func need write lock
+//puragecount == 0 or negative, clean all invalid entries
+func (c *opfsMetaCache) purgeEntryWithoutLock(purgecount int) error {
 	current := 0
-	for k, v := range c.Acls {
+	for k, v := range c.metas {
 		if c.ValidCacheEntry(k, v) {
 			continue
 		}
-		delete(c.Acls, k)
+		delete(c.metas, k)
 		c.CurrentEntries--
 		current++
 		if current == purgecount && purgecount > 0 {
@@ -78,7 +87,7 @@ func (c *opfsAclCache) purgeEntryWithoutLock(purgecount int) error {
 	return nil
 }
 
-func (c *opfsAclCache) haveCacheEntry() bool {
+func (c *opfsMetaCache) haveCacheEntry() bool {
 	if c.CurrentEntries == c.MaxEntries {
 		err := c.purgeEntryWithoutLock(1)
 		if err != nil && !errors.Is(err, errNotPurge){
@@ -90,26 +99,43 @@ func (c *opfsAclCache) haveCacheEntry() bool {
 	return true
 }
 
-func (c *opfsAclCache) LoadAclCacheEntry(src string) (opfsHdfsAcl, error){
-	c.Lock()
-	defer c.Unlock()
-
-	if e, ok := c.Acls[src]; ok {
-		return *e.Acl, nil
-	}
-	e, err := opfsGetAclEntry(src)
+func (c *opfsMetaCache) loadCacheEntry (src string) (*opfsMetaCacheEntry, error) {
+	e, err := opfsGetMetaEntry(src)
 	if err != nil {
-		return opfsHdfsAcl{}, err
+		return nil, err
 	}
-	if c.haveCacheEntry() {
-		c.Acls[src] = e
+	olde, ok := c.metas[src]
+	if ok {
+		if c.ValidCacheEntry(src, olde) {
+			log.Printf("another thread to load this entry, this thread do nothing")
+			log.Printf("return entry %v in cache", olde)
+			return olde, nil
+		}
+		c.metas[src] = e
+	} else if c.haveCacheEntry() {
+		c.metas[src] = e
 		c.CurrentEntries++
+	} else {
+		err = errNoSpace
 	}
 
-	return *e.Acl, nil
+	return e, err
 }
 
-func (c *opfsAclCache) validModifyTime(src string, e *opfsAclCacheEntry) bool {
+func (c *opfsMetaCache) getValidCacheEntry(src string) (*opfsMetaCacheEntry, error) {
+	e, ok := c.metas[src]
+	if ok && c.ValidCacheEntry(src, e) {
+		return e, nil
+	}
+
+	if !ok {
+		return nil, errNotFound
+	}
+	//in cache, but invalid
+	return nil, errCacheInvalid
+}
+
+func (c *opfsMetaCache) validModifyTime(src string, e *opfsMetaCacheEntry) bool {
 	m, err := opfsGetModifyTime(src)
 	if err != nil {
 		log.Printf("get modify %v err %v", src, err)
@@ -132,7 +158,7 @@ func (c *opfsAclCache) validModifyTime(src string, e *opfsAclCacheEntry) bool {
 	return true
 }
 
-func (c *opfsAclCache) validStayTime(e *opfsAclCacheEntry) bool {
+func (c *opfsMetaCache) validStayTime(e *opfsMetaCacheEntry) bool {
 	elapse := time.Since(e.StayTime)
 	log.Printf("staytime %v elapse %v", e.StayTime, elapse)
 	if elapse >= DefaultLifeTime * time.Second {
@@ -142,7 +168,7 @@ func (c *opfsAclCache) validStayTime(e *opfsAclCacheEntry) bool {
 	return true
 }
 
-func (c *opfsAclCache) ValidCacheEntry(src string, e *opfsAclCacheEntry) bool {
+func (c *opfsMetaCache) ValidCacheEntry(src string, e *opfsMetaCacheEntry) bool {
 	if !c.validModifyTime(src, e) {
 		log.Printf("modify time invalid")
 		return false
@@ -156,27 +182,11 @@ func (c *opfsAclCache) ValidCacheEntry(src string, e *opfsAclCacheEntry) bool {
 	return true
 }
 
-func (c *opfsAclCache) getAclCacheEntry(src string) (*opfsHdfsAcl, error) {
-	c.RLock()
-	defer c.RUnlock()
-
-	e, ok := c.Acls[src]
-	if ok {
-		if !c.ValidCacheEntry(src, e) {
-			log.Printf("valid check fail %v %v", src, e)
-			return nil, errNotFound
-		}
-		return e.Acl, nil
-	}
-
-	return nil, errNotFound
-}
-
-func (c *opfsAclCache) UpdateStayTime(src string) {
+func (c *opfsMetaCache) UpdateStayTime(src string) {
 	c.Lock()
 	defer c.Unlock()
-	e, ok := c.Acls[src]
-	if !ok {
+	e, err := c.getValidCacheEntry(src)
+	if err != nil {
 		return
 	}
 	log.Printf("update before staytime %v", e.StayTime)
@@ -184,76 +194,124 @@ func (c *opfsAclCache) UpdateStayTime(src string) {
 	log.Printf("update staytime %v", e.StayTime)
 }
 
-func (c *opfsAclCache) GetAclCacheEntry(src string) (opfsHdfsAcl, error) {
-	acl, err := c.getAclCacheEntry(src)
+func (c *opfsMetaCache) GetAcl(src string) (opfsHdfsAcl, error) {
+	c.RLock()
+	defer c.RUnlock()
+	e, err := c.getCacheEntry(src, false)
+	if err == nil {
+		//valid entry
+		go c.UpdateStayTime(src)
+		return *e.meta.Acl, nil
+	}
+	e, err = opfsGetMetaEntry(src)
 	if err != nil {
-		log.Printf("in cache %v", err)
-		if errors.Is(err, errNotFound) {
-			return c.LoadAclCacheEntry(src)
-		}
 		return opfsHdfsAcl{}, err
 	}
 
-	go c.UpdateStayTime(src)
+	go c.getCacheEntry(src, true)
 
-	return *acl, nil
+	return *e.meta.Acl, nil
 }
 
-func (c *opfsAclCache) setEntryWithoutLock(src string, acl *opfsHdfsAcl) error {
-	update, err := opfsGetModifyTime(src)
+//include 2 part: 1. get valid entry 2. load a entry from storage
+//invoker with write lock can load
+//invoker with read lock can't load
+func (c *opfsMetaCache) getCacheEntry(src string, withload bool) (*opfsMetaCacheEntry, error) {
+	e, err := c.getValidCacheEntry(src)
+	if err == nil {
+		return e, nil
+	}
+
+	log.Printf("get valid fail %v", err)
+
+	if withload {
+		return c.loadCacheEntry(src)
+	}
+
+	return e, err
+}
+
+func (c *opfsMetaCache) setAcl(src string, acl *opfsHdfsAcl) error {
+	c.Lock()
+	defer c.Unlock()
+
+	e, err := c.getCacheEntry(src, true)
 	if err != nil {
+		if !errors.Is(err, errNoSpace) {
+			return err
+		}
+	}
+	e.meta.Acl = acl
+
+	if err := opfsStoreConfig(src, e.meta); err != nil {
 		return err
 	}
-	e := &opfsAclCacheEntry {
-		UpdateTime: update,
-		StayTime: time.Now(),
-		Acl: acl,
-	}
-	if c.haveCacheEntry() {
-		log.Printf("set to entry src %v e %v", src, e)
-		c.Acls[src] = e
-		c.CurrentEntries++
-	}
 
-	return nil
-
-}
-
-func (c *opfsAclCache) updateEntryWithoutLock(src string, e *opfsAclCacheEntry, acl *opfsHdfsAcl) error {
-	var err error
-	e.UpdateTime = time.Now()
-	e.Acl = acl
+	e.StayTime = time.Now()
 	e.UpdateTime, err = opfsGetModifyTime(src)
 	if err != nil {
 		return err
 	}
-	c.Acls[src] = e
 
 	return nil
 }
 
-func (c *opfsAclCache) setAclCacheEntry(src string, acl *opfsHdfsAcl) error {
-	if err := opfsStoreConfig(src, acl); err != nil {
-		return err
-	}
+func (c *opfsMetaCache) SetAcl(src string, acl opfsHdfsAcl) error {
+	return c.setAcl(src, &acl)
+}
+
+func (c *opfsMetaCache) setNamespaceQuota(src string, quota *opfsHdfsNamespaceQuota) error {
 	c.Lock()
 	defer c.Unlock()
-	e, ok := c.Acls[src]
-	if !ok {
-		return c.setEntryWithoutLock(src, acl)
+
+	e, err := c.getCacheEntry(src, true)
+	if err != nil {
+		if !errors.Is(err, errNoSpace) {
+			return err
+		}
 	}
-	return c.updateEntryWithoutLock(src, e, acl)
+	e.meta.Quota = quota
+
+	if err := opfsStoreConfig(src, e.meta); err != nil {
+		return err
+	}
+
+	e.StayTime = time.Now()
+	e.UpdateTime, err = opfsGetModifyTime(src)
+	if err != nil {
+		return err
+	}
+
+	return nil
 }
 
-func (c *opfsAclCache) SetAclCacheEntry(src string, acl opfsHdfsAcl) error {
-	return c.setAclCacheEntry(src, &acl)
+func (c *opfsMetaCache) SetNamespaceQuota(src string, quota opfsHdfsNamespaceQuota) error {
+	return c.setNamespaceQuota(src, &quota)
 }
 
-func InitAclCache() *opfsAclCache {
-	return &opfsAclCache {
+func (c *opfsMetaCache) GetNamespaceQuota(src string) (opfsHdfsNamespaceQuota, error) {
+	c.RLock()
+	defer c.RUnlock()
+	e, err := c.getCacheEntry(src, false)
+	if err != nil {
+		go c.UpdateStayTime(src)
+		return *e.meta.Quota, nil
+	}
+	e, err = opfsGetMetaEntry(src)
+	if err != nil {
+		return opfsHdfsNamespaceQuota{}, err
+	}
+
+	go c.getCacheEntry(src, true)
+
+	return *e.meta.Quota, nil
+}
+
+func InitAclCache() *opfsMetaCache {
+	return &opfsMetaCache {
 		MaxEntries: DefaultMaxEntries,
 		CurrentEntries: 0,
 		RWMutex: &sync.RWMutex{},
-		Acls: make(map[string]*opfsAclCacheEntry),
+		metas: make(map[string]*opfsMetaCacheEntry),
 	}
 }

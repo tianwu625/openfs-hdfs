@@ -25,7 +25,7 @@ func opfsSetPermission(r *hdfs.SetPermissionRequestProto) (*hdfs.SetPermissionRe
 	src := r.GetSrc()
 	perm := r.GetPermission().GetPerm()
 
-	acl, err := globalMeta.GetAclCacheEntry(src)
+	acl, err := globalMeta.GetAcl(src)
 	if !acl.SetMask && len(acl.Entries) == 0 {
 		if err := opfs.SetPermission(src, os.FileMode(perm)); err != nil {
 			return nil, err
@@ -63,7 +63,7 @@ func opfsSetPermission(r *hdfs.SetPermissionRequestProto) (*hdfs.SetPermissionRe
 	if err := opfs.SetPermission(src, os.FileMode(perm)); err != nil {
 		return nil, err
 	}
-	err = globalMeta.SetAclCacheEntry(src, acl)
+	err = globalMeta.SetAcl(src, acl)
 	if err != nil {
 		log.Printf("fail to update cache %v", err)
 		return nil, err

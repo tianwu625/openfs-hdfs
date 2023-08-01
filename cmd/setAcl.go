@@ -127,7 +127,7 @@ func opfsSetAcl(r *hdfs.SetAclRequestProto) (*hdfs.SetAclResponseProto, error) {
 		acl = replaceEntriesFromProto(acls)
 	} else {
 		nacl := replaceEntriesFromProto(acls)
-		*acl, err = globalMeta.GetAclCacheEntry(src)
+		*acl, err = globalMeta.GetAcl(src)
 		if err != nil {
 			return nil, err
 		}
@@ -177,7 +177,7 @@ func opfsSetAcl(r *hdfs.SetAclRequestProto) (*hdfs.SetAclResponseProto, error) {
 		acl.SetGroup = true
 	}
 
-	err = globalMeta.SetAclCacheEntry(src, *acl)
+	err = globalMeta.SetAcl(src, *acl)
 	if err != nil {
 		log.Printf("fail to update cache %v", err)
 		return nil, err

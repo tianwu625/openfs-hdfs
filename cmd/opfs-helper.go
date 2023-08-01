@@ -152,21 +152,33 @@ func opfsGetMetaPath(src string) string {
 	return path.Join(hdfsMetaDir, src, hdfsMetaFile)
 }
 
-func opfsGetFromFile(src string) (*opfsHdfsAcl, time.Time, error) {
+const (
+	defaultSetQuota = false
+	defaultNsQuota = setClrValue
+)
+
+func opfsGetFromOpfsFile(src string) (*opfsHdfsMeta, time.Time, error) {
 	mask, acls, dmask, dacls, err := opfsGetMask(src)
 	if err != nil {
 		return nil, time.Unix(0, 0), err
 	}
 	log.Printf("mask %v acls %v dmask %v dacls %v", mask, acls, dmask, dacls)
-	acl := &opfsHdfsAcl {
-		SetMask: false,
-		Mask: mask,
-		Entries: acls,
-		SetDefaultMask: false,
-		DefaultMask: dmask,
-		DefaultEntries: dacls,
+	meta := &opfsHdfsMeta {
+		Acl:&opfsHdfsAcl {
+			SetMask: false,
+			Mask: mask,
+			Entries: acls,
+			SetDefaultMask: false,
+			DefaultMask: dmask,
+			DefaultEntries: dacls,
+		},
+		//set default value for namespace quota
+		Quota: &opfsHdfsNamespaceQuota {
+			SetQuota: defaultSetQuota,
+			Quota: defaultNsQuota,
+		},
 	}
-	if err := opfsStoreConfig(src, acl); err != nil {
+	if err := opfsStoreConfig(src, meta); err != nil {
 		return nil, time.Unix(0, 0), err
 	}
 	srcMeta := opfsGetMetaPath(src)
@@ -174,7 +186,7 @@ func opfsGetFromFile(src string) (*opfsHdfsAcl, time.Time, error) {
 	if err != nil {
 		return nil, time.Unix(0, 0), err
 	}
-	return acl, t, nil
+	return meta, t, nil
 }
 
 func sameopfsAclEntry (a1 *opfsHdfsAclEntry, a2 *opfsHdfsAclEntry) bool {
@@ -241,17 +253,17 @@ func updateAclMask(src string, acl *opfsHdfsAcl, updateAcl bool) error {
 	return nil
 }
 
-func opfsGetFromConfig(src string) (*opfsHdfsAcl, time.Time, error) {
+func opfsGetFromConfig(src string) (*opfsHdfsMeta, time.Time, error) {
 	srcMeta := opfsGetMetaPath(src)
 	b, err := opfsReadAll(srcMeta)
 	if err != nil {
 		if os.IsNotExist(err) {
-			return opfsGetFromFile(src)
+			return opfsGetFromOpfsFile(src)
 		}
 	}
 	json := jsoniter.ConfigCompatibleWithStandardLibrary
-	hdfsAcl := new(opfsHdfsAcl)
-	if err = json.Unmarshal(b, hdfsAcl); err != nil {
+	meta := new(opfsHdfsMeta)
+	if err = json.Unmarshal(b, meta); err != nil {
 		return nil, time.Unix(0, 0), err
         }
 	tconfig, err := opfsGetModifyTime(srcMeta)
@@ -263,27 +275,28 @@ func opfsGetFromConfig(src string) (*opfsHdfsAcl, time.Time, error) {
 		return nil, time.Unix(0, 0), err
 	}
 	updateAcl := tfile.After(tconfig)
-	if !hdfsAcl.SetMask || !hdfsAcl.SetDefaultMask || updateAcl {
-		if err := updateAclMask(src, hdfsAcl, updateAcl); err != nil {
+	if !meta.Acl.SetMask || !meta.Acl.SetDefaultMask || updateAcl {
+		if err := updateAclMask(src, meta.Acl, updateAcl); err != nil {
 			return nil, time.Unix(0,0), err
 		}
 	}
-	return hdfsAcl, tconfig, nil
+	return meta, tconfig, nil
 }
 
-func opfsGetAclEntry(src string) (*opfsAclCacheEntry, error) {
-	e := new(opfsAclCacheEntry)
-	var err error
-	e.Acl, e.ConfigTime, err = opfsGetFromConfig(src)
+func opfsGetMetaEntry(src string) (*opfsMetaCacheEntry, error) {
+	meta, tconfig, err := opfsGetFromConfig(src)
 	if err != nil {
-		return e, err
+		return nil, err
+	}
+	e := &opfsMetaCacheEntry {
+		meta: meta,
+		ConfigTime: tconfig,
+		StayTime: time.Now(),
 	}
 	e.UpdateTime, err = opfsGetModifyTime(src)
 	if err != nil {
-		return e, err
+		return nil, err
 	}
-
-	e.StayTime = time.Now()
 
 	return e, nil
 }
@@ -309,7 +322,7 @@ func cleanTmp(src string) {
 	opfs.RemoveFile(src)
 }
 
-func opfsStoreConfig(src string, acl *opfsHdfsAcl) error {
+func opfsStoreConfig(src string, e *opfsHdfsMeta) error {
 	srcTmp := path.Join(hdfsSysDir, tmpdir, GetRandomFileName())
 
 	err := opfs.MakeDirAll(path.Dir(srcTmp), os.FileMode(defaultConfigPerm))
@@ -323,11 +336,11 @@ func opfsStoreConfig(src string, acl *opfsHdfsAcl) error {
 	defer f.Close()
 	defer cleanTmp(srcTmp)
 	json := jsoniter.ConfigCompatibleWithStandardLibrary
-	aclData, err := json.Marshal(acl)
+	data, err := json.Marshal(e)
 	if err != nil {
 		return err
 	}
-	if _, err := io.Copy(f, bytes.NewReader(aclData)); err != nil {
+	if _, err := io.Copy(f, bytes.NewReader(data)); err != nil {
 		return err
 	}
 	srcMeta := opfsGetMetaPath(src)

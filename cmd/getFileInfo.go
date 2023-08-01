@@ -91,7 +91,7 @@ func opfsHdfsFileStatus(src string, fi os.FileInfo, res *hdfs.HdfsFileStatusProt
 	}
 	res.Blocksize = proto.Uint64(128*1024*1024)
 	res.FileId = proto.Uint64(opfs_stat.Ino)
-	res.Flags = proto.Uint32(1)
+	res.Flags = proto.Uint32(flag)
 	log.Printf("fs %v\n", res)
 	return res
 }

@@ -17,7 +17,7 @@ const (
 	defaultDataNodeXferPort = 50010
 )
 
-var globalMeta *opfsAclCache
+var globalMeta *opfsMetaCache
 var globalConfEnv *hconf.HadoopConfEnv
 var globalClientProtoAcl *serviceAclConf
 var globalIAMSys *iam.IAMSys

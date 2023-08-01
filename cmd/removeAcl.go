@@ -28,7 +28,7 @@ func opfsRemoveAcl(r *hdfs.RemoveAclRequestProto) (*hdfs.RemoveAclResponseProto,
 		return nil, err
 	}
 	acl := opfsHdfsAcl{}
-	if err := globalMeta.SetAclCacheEntry(src, acl); err != nil {
+	if err := globalMeta.SetAcl(src, acl); err != nil {
 		return nil, err
 	}
 

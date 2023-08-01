@@ -6,6 +6,7 @@ import (
 	"math"
 	"errors"
 	"io"
+	"syscall"
 
 	"github.com/openfs/openfs-hdfs/internal/opfs"
 	hdfs "github.com/openfs/openfs-hdfs/internal/protocol/hadoop_hdfs"
@@ -43,26 +44,15 @@ const (
 )
 
 func opfsGetSummary(src string) (*hdfs.ContentSummaryProto, error) {
-	dirs, files, allsize, err := opfsRecursivePath(src)
-	if err != nil && !errors.Is(err, io.EOF){
-		return new(hdfs.ContentSummaryProto), err
+	qe, err := opfsGetQuota(src)
+	if err != nil {
+		return nil, err
 	}
-	var (
-		quotaNum uint64
-		spaceQuota uint64
-		consumeSpace uint64
-	)
-	quotaEntry, err := opfsGetQuota(src)
-	if quotaEntry == nil {
-		quotaNum, _, spaceQuota, consumeSpace = opfsGetdefaultQuota()
-		//quto not set, consumespace can't get from file system
-		consumeSpace += allsize * defaultReplicate
-	} else {
-		quotaNum, _, spaceQuota, consumeSpace = opfsGetquotaEntry(quotaEntry)
-	}
+	log.Printf("qe %v", qe)
 	var infos *hdfs.StorageTypeQuotaInfosProto
 
 	if src == "/" {
+		_, _, allsize, _ := opfsRecursivePath(src)
 		infos = opfsGetRootQuotaInfo(allsize)
 	}
 
@@ -70,12 +60,12 @@ func opfsGetSummary(src string) (*hdfs.ContentSummaryProto, error) {
 	ecpolicy, _ := opfsGetEcPolicy(src)
 
 	res := &hdfs.ContentSummaryProto {
-		Length: proto.Uint64(uint64(allsize)),
-		FileCount:proto.Uint64(uint64(files)),
-		DirectoryCount: proto.Uint64(uint64(dirs)),
-		Quota: proto.Uint64(uint64(quotaNum)),
-		SpaceConsumed: proto.Uint64(uint64(consumeSpace)),
-		SpaceQuota:proto.Uint64(uint64(spaceQuota)),
+		Length: proto.Uint64(qe.spaceconsume),
+		FileCount:proto.Uint64(qe.filecount),
+		DirectoryCount: proto.Uint64(qe.dircount),
+		Quota: proto.Uint64(qe.quota),
+		SpaceConsumed: proto.Uint64(qe.spaceconsume),
+		SpaceQuota:proto.Uint64(qe.spacequota),
 		TypeQuotaInfos:infos,
 		SnapshotLength: proto.Uint64(snapinfos.snapLength),
 		SnapshotFileCount: proto.Uint64(snapinfos.snapfiles),
@@ -126,21 +116,47 @@ func opfsRecursivePath(src string) (dircount uint64, filecount uint64, occupysiz
 
 type hdfsQuotaEntry struct {
 	quota uint64
-	consume uint64
+	dircount uint64
+	filecount uint64
 	spacequota uint64
-	consumespace uint64
+	spaceconsume uint64
 }
 
 func opfsGetQuota(src string) (*hdfsQuotaEntry, error) {
-	return nil, nil
+	dirs, files, allsize, err := opfsRecursivePath(src)
+	if err != nil && !errors.Is(err, io.EOF){
+		return nil, err
+	}
+	quota, err := globalMeta.GetNamespaceQuota(src)
+	if err != nil {
+		return nil, err
+	}
+
+	spacequota, err := opfs.GetSpaceQuota(src)
+	if err != nil && !errors.Is(err, syscall.ENOENT){
+		return nil, err
+	}
+
+	consumeSpace := uint64(0)
+	quotaSpace := uint64(math.MaxUint64)
+	if errors.Is(err, syscall.ENOENT) {
+		consumeSpace = allsize * defaultReplicate
+	} else {
+		consumeSpace = spacequota.Spaceconsume
+		quotaSpace = spacequota.Spacequota
+	}
+
+	return &hdfsQuotaEntry {
+		dircount: dirs,
+		quota: quota.Quota,
+		filecount: files,
+		spaceconsume: consumeSpace,
+		spacequota: quotaSpace,
+	}, nil
 }
 
-func opfsGetdefaultQuota() (quota, consume, spaceQuota, consumeSpace uint64){
-	return math.MaxUint64, 0, math.MaxUint64, 0
-}
-
-func opfsGetquotaEntry(entry *hdfsQuotaEntry)(quota, consume, spaceQuota, consumeSpace uint64) {
-	return entry.quota, entry.consume, entry.spacequota, entry.consumespace
+func opfsGetquotaEntry(entry *hdfsQuotaEntry)(quota, spaceQuota uint64) {
+	return entry.quota, entry.spacequota
 }
 
 func opfsGetRootQuotaInfo(occupy uint64) (*hdfs.StorageTypeQuotaInfosProto){

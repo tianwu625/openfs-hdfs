@@ -660,3 +660,151 @@ func RemoveXAttr(src, name string) error {
 	return nil
 }
 
+type OpfsQuotaEntry struct {
+	Spaceconsume uint64
+	Spacequota uint64
+}
+
+func CQuotaEntrytoArray(entries *C.struct_oquotent, count C.int32_t) []C.struct_oquotent {
+	res := make([]C.struct_oquotent, 0)
+	sHdr := (*reflect.SliceHeader)(unsafe.Pointer(&res))
+	sHdr.Data = uintptr(unsafe.Pointer(entries))
+	sHdr.Len = int(count)
+	sHdr.Cap = int(count)
+	log.Printf("sHdr %v", sHdr)
+
+	return res
+}
+
+func GetSpaceQuota(src string) (*OpfsQuotaEntry, error) {
+	var entries *C.struct_oquotent
+	var count C.int32_t
+	ret := C.ofapi_quotaget(root.fs, C.int32_t(C.OFAPI_QUOTA_TYPE_DIR), &entries, &count)
+	if ret != cok {
+		return nil, opfsErr(ret)
+	}
+	defer C.free(unsafe.Pointer(entries))
+	qs := CQuotaEntrytoArray(entries, count)
+	log.Printf("len %v", len(qs))
+	for _, q := range qs {
+		var fd *C.ofapi_fd_t
+		ret = C.ofapi_openbyid(root.fs, q.oq_oid, C.uint64_t(0), &fd)
+		if ret != cok {
+			return nil, opfsErr(ret)
+		}
+		var p *C.char
+		ret = C.ofapi_ancestry(fd, &p)
+		if ret != cok {
+			return nil, opfsErr(ret)
+		}
+		// if free p pointer but will runtime crash
+		// C.free(unsafe.Pointer(p))
+		name := pathutils.Clean(C.GoString(p))
+		if name == src {
+			return &OpfsQuotaEntry {
+				Spaceconsume:uint64(q.oq_usage),
+				Spacequota: uint64(q.oq_limit_hard),
+			}, nil
+		}
+	}
+
+	return nil, syscall.ENOENT
+}
+
+func getIno(src string) (C.uint64_t, error) {
+	fd, err := open(src)
+	defer C.ofapi_close(fd)
+	if err != nil {
+		return C.uint64_t(0), err
+	}
+	stat := C.struct_oatt{}
+	ret := C.ofapi_getattr(fd, &stat)
+	if ret != cok {
+		return C.uint64_t(0), opfsErr(ret)
+	}
+	return stat.oa_ino, nil
+}
+
+func getqid() C.uint64_t {
+	return C.uint64_t(time.Now().UnixNano())
+}
+
+const NeedFix = 0x2
+
+func SetSpaceQuota(src string, e *OpfsQuotaEntry) error {
+	/*
+	if src == "/" {
+		return syscall.ENOTSUP
+	}
+	*/
+	var entries *C.struct_oquotent
+	var count C.int32_t
+	ret := C.ofapi_quotaget(root.fs, C.int32_t(C.OFAPI_QUOTA_TYPE_DIR), &entries, &count)
+	if ret != cok {
+		return opfsErr(ret)
+	}
+	var target C.struct_oquotent
+	found := false
+	qs := CQuotaEntrytoArray(entries, count)
+	for _, q := range qs {
+		var fd *C.ofapi_fd_t
+		ret = C.ofapi_openbyid(root.fs, q.oq_oid, C.uint64_t(0), &fd)
+		if ret != cok {
+			return opfsErr(ret)
+		}
+		var p *C.char
+		ret = C.ofapi_ancestry(fd, &p)
+		if ret != cok {
+			return opfsErr(ret)
+		}
+		name := pathutils.Clean(C.GoString(p))
+		if name == src {
+			found = true
+			target = q
+			break
+		}
+		/*
+		if strings.HasPrefix(name, src) ||
+		   strings.HasPrefix(src, name) {
+			return syscall.ENOTSUP
+		}
+		*/
+	}
+	if !found {
+		target = C.struct_oquotent {
+			oq_id: getqid(),
+			oq_state: C.uint32_t(NeedFix),
+			oq_type: C.int32_t(C.OFAPI_QUOTA_TYPE_DIR),
+			oq_limit_soft: C.int64_t(e.Spacequota),
+			oq_limit_hard: C.int64_t(e.Spacequota),
+		}
+		var err error
+		target.oq_oid, err = getIno(src)
+		if err != nil {
+			return err
+		}
+	} else {
+		target.oq_limit_soft = C.int64_t(e.Spacequota)
+		target.oq_limit_hard = C.int64_t(e.Spacequota)
+		target.oq_state |= C.uint32_t(C.OFAPI_QUOTA_TYPE_DIR)
+	}
+
+	ret = C.ofapi_quotaset(root.fs, &target)
+	if ret != cok {
+		log.Printf("fail set %v", ret)
+		return opfsErr(ret)
+	}
+
+	if target.oq_state & C.uint32_t(NeedFix) != 0 {
+		fd, _ := open(src)
+		defer C.ofapi_close(fd)
+		ret = C.ofapi_quotafix(fd, target.oq_id, C.int32_t(C.OFAPI_QUOTA_TYPE_DIR))
+		if ret != cok {
+			log.Printf("fix fail %v", ret)
+			return opfsErr(ret)
+		}
+	}
+
+	return nil
+}
+
