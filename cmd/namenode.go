@@ -280,6 +280,10 @@ var RpcClientNamenodeProtoV1 map[string]rpc.RpcMethod = map[string]rpc.RpcMethod
 		Dec: getSnapshottableDirListingDec,
 		Call: getSnapshottableDirListing,
 	},
+	"rollingUpgrade": rpc.RpcMethod {
+		Dec: rollingUpgradeDec,
+		Call: rollingUpgrade,
+	},
 }
 
 func init() {
