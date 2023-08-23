@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"context"
 	"log"
 
 	hdfs "github.com/openfs/openfs-hdfs/internal/protocol/hadoop_hdfs"
@@ -12,7 +13,7 @@ func setReplicationDec(b []byte) (proto.Message, error) {
 	return parseRequest(b, req)
 }
 
-func setReplication(m proto.Message) (proto.Message, error) {
+func setReplication(ctx context.Context, m proto.Message) (proto.Message, error) {
 	req := m.(*hdfs.SetReplicationRequestProto)
 	log.Printf("src %v\nreplication %v\n", req.GetSrc(), req.GetReplication())
 	return opfsSetReplication(req)

@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"context"
 	hdfs "github.com/openfs/openfs-hdfs/internal/protocol/hadoop_hdfs"
 	"google.golang.org/protobuf/proto"
 )
@@ -10,7 +11,7 @@ func getFsReplicatedBlockStatsDec(b []byte) (proto.Message, error) {
 	return parseRequest(b, req)
 }
 
-func getFsReplicatedBlockStats(m proto.Message) (proto.Message, error) {
+func getFsReplicatedBlockStats(ctx context.Context, m proto.Message) (proto.Message, error) {
 	req := m.(*hdfs.GetFsReplicatedBlockStatsRequestProto)
 	return opfsGetFsReplicatedBlockStats(req)
 }

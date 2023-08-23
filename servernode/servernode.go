@@ -17,4 +17,12 @@ var RpcDataServerProtoV1 map[string]rpc.RpcMethod = map[string]rpc.RpcMethod{
 		Dec: sendHeartbeatDec,
 		Call: sendHeartbeat,
 	},
+	"blockReport": rpc.RpcMethod {
+		Dec: blockReportDec,
+		Call: blockReport,
+	},
+	"blockReceivedAndDeleted": rpc.RpcMethod {
+		Dec: blockReceivedAndDeletedDec,
+		Call: blockReceivedAndDeleted,
+	},
 }

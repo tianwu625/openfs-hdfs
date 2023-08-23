@@ -7,6 +7,7 @@ import (
 	"errors"
 	"io"
 	"syscall"
+	"context"
 
 	"github.com/openfs/openfs-hdfs/internal/opfs"
 	hdfs "github.com/openfs/openfs-hdfs/internal/protocol/hadoop_hdfs"
@@ -18,7 +19,7 @@ func getContentSummaryDec(b []byte) (proto.Message, error) {
 	return parseRequest(b, req)
 }
 
-func getContentSummary(m proto.Message) (proto.Message, error) {
+func getContentSummary(ctx context.Context, m proto.Message) (proto.Message, error) {
 	req := m.(*hdfs.GetContentSummaryRequestProto)
 	log.Printf("path %v", req.GetPath())
 	return opfsGetContentSummary(req)

@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"context"
 	"time"
 	"log"
 	hdfs "github.com/openfs/openfs-hdfs/internal/protocol/hadoop_hdfs"
@@ -12,7 +13,7 @@ func getReconfigurationStatusDec(b []byte) (proto.Message, error) {
 	return parseRequest(b, req)
 }
 
-func getReconfigurationStatus(m proto.Message) (proto.Message, error) {
+func getReconfigurationStatus(ctx context.Context,m proto.Message) (proto.Message, error) {
 	req := m.(*hdfs.GetReconfigurationStatusRequestProto)
 	return opfsGetReconfigurationStatus(req)
 }

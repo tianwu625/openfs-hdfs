@@ -4,6 +4,7 @@ import (
 	"log"
 	"fmt"
 	"os"
+	"context"
 
 	"github.com/openfs/openfs-hdfs/internal/opfs"
 	hdfs "github.com/openfs/openfs-hdfs/internal/protocol/hadoop_hdfs"
@@ -15,7 +16,7 @@ func setAclDec(b []byte) (proto.Message, error) {
 	return parseRequest(b, req)
 }
 
-func setAcl(m proto.Message) (proto.Message, error) {
+func setAcl(ctx context.Context,m proto.Message) (proto.Message, error) {
 	req := m.(*hdfs.SetAclRequestProto)
 	log.Printf("src %v\nacls %v\n", req.GetSrc(), req.GetAclSpec())
 	return opfsSetAcl(req)

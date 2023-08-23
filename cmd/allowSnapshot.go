@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"context"
 	"log"
 	"errors"
 
@@ -13,7 +14,7 @@ func allowSnapshotDec(b []byte) (proto.Message, error) {
 	return parseRequest(b, req)
 }
 
-func allowSnapshot(m proto.Message) (proto.Message, error) {
+func allowSnapshot(ctx context.Context, m proto.Message) (proto.Message, error) {
 	req := m.(*hdfs.AllowSnapshotRequestProto)
 	log.Printf("snapshotRoot %v", req.GetSnapshotRoot())
 	res, err := opfsAllowSnapshot(req)

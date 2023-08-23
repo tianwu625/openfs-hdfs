@@ -1,6 +1,8 @@
 package cmd
 
 import (
+	"context"
+
 	hdfs "github.com/openfs/openfs-hdfs/internal/protocol/hadoop_hdfs"
 	"google.golang.org/protobuf/proto"
 )
@@ -10,7 +12,7 @@ func rollEditsDec(b []byte) (proto.Message, error) {
 	return parseRequest(b, req)
 }
 
-func rollEdits(m proto.Message) (proto.Message, error) {
+func rollEdits(ctx context.Context, m proto.Message) (proto.Message, error) {
 	req := m.(*hdfs.RollEditsRequestProto)
 	return opfsRollEdits(req)
 }

@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"log"
+	"context"
 
 	hdfs "github.com/openfs/openfs-hdfs/internal/protocol/hadoop_hdfs"
 	hadoop "github.com/openfs/openfs-hdfs/internal/protocol/hadoop_common"
@@ -13,7 +14,7 @@ func updateBlockForPipelineDec(b []byte) (proto.Message, error) {
 	return parseRequest(b, req)
 }
 
-func updateBlockForPipeline(m proto.Message) (proto.Message, error) {
+func updateBlockForPipeline(ctx context.Context, m proto.Message) (proto.Message, error) {
 	req := m.(*hdfs.UpdateBlockForPipelineRequestProto)
 	log.Printf("block %v\nclient %v\n", req.GetBlock(), req.GetClientName())
 	return opfsUpdateBlockForPipeline(req)

@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"log"
+	"context"
 
 	"github.com/openfs/openfs-hdfs/internal/opfs"
 	hdfs "github.com/openfs/openfs-hdfs/internal/protocol/hadoop_hdfs"
@@ -13,7 +14,7 @@ func getXAttrsDec(b []byte) (proto.Message, error) {
 	return parseRequest(b, req)
 }
 
-func getXAttrs(m proto.Message) (proto.Message, error) {
+func getXAttrs(ctx context.Context, m proto.Message) (proto.Message, error) {
 	req := m.(*hdfs.GetXAttrsRequestProto)
 	log.Printf("src %v\nxattr %v\n", req.GetSrc(), req.GetXAttrs())
 	return opfsGetXAttrs(req)

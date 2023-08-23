@@ -1,6 +1,8 @@
 package datanode
 
 import (
+	"context"
+
 	"github.com/openfs/openfs-hdfs/internal/opfs"
 	hdfs "github.com/openfs/openfs-hdfs/internal/protocol/hadoop_hdfs"
 	"google.golang.org/protobuf/proto"
@@ -11,7 +13,7 @@ func getVolumeReportDec(b []byte) (proto.Message, error) {
 	return parseRequest(b, req)
 }
 
-func getVolumeReport(m proto.Message) (proto.Message, error) {
+func getVolumeReport(ctx context.Context, m proto.Message) (proto.Message, error) {
 	req := m.(*hdfs.GetVolumeReportRequestProto)
 	res, err := opfsGetVolume(req)
 	if err != nil {

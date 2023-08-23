@@ -6,6 +6,13 @@ import (
 	"errors"
 )
 
+var (
+	ErrInvalidMethod error = errors.New("invalid alloc block method")
+	ErrNotSatisfyReplicate error = errors.New("not satisfy replicate number")
+	ErrDuplicateRegister error = errors.New("duplicate register")
+	ErrFailAlloc error = errors.New("fail to alloc datanode to store")
+)
+
 type Datanodeid struct {
 	Ipaddr string
 	Hostname string
@@ -88,10 +95,55 @@ func (dn *Datanode) Clone() *Datanode {
 }
 
 const EventBuffer = 128
+/*
+{storageUuid:"DS-79a574ea-76ff-4850-88cc-e65e370184fb" failed:false capacity:24004572217344 dfsUsed:221184 remaining:24004571996160 blockPoolUsed:24004572217344 storage:{storageUuid:"DS-79a574ea-76ff-4850-88cc-e65e370184fb" state:NORMAL storageType:DISK} nonDfsUsed:0}
+*/
+type DataStorageInfo struct {
+	Uuid string
+	State string
+	Failed bool
+	Capacity uint64
+	DfsUsed uint64
+	Remaining uint64
+	BlockPoolUsed uint64
+	StorageType string
+	NonDfsUsed uint64
+}
+
+type DatanodeStorages struct {
+	storages []*DataStorageInfo
+}
 
 type datanodeEntry struct {
 	node *Datanode
+	*sync.RWMutex
+	storages *DatanodeStorages
 	events chan EventRequest
+}
+
+func (de *datanodeEntry) UpdateStorages (reports *DatanodeStorages) error {
+	de.Lock()
+	defer de.Unlock()
+	de.storages = reports
+	return nil
+}
+
+func (de *datanodeEntry) AllocStorages(stype string) *DataStorageInfo {
+	de.RLock()
+	defer de.RUnlock()
+	if de.storages == nil {
+		return nil
+	}
+	for _, s := range de.storages.storages {
+		log.Printf("s %v, type %v s.StorageType == stype %v", s, stype, s.StorageType == stype)
+		if s.StorageType == stype {
+			ns := *s
+			log.Printf("ns %v", ns)
+			return &ns
+		}
+	}
+
+	return nil
 }
 
 type DatanodeMap struct {
@@ -99,7 +151,6 @@ type DatanodeMap struct {
 	datanodes map[string]*datanodeEntry
 }
 
-var ErrDuplicateRegister error = errors.New("duplicate register")
 
 func (dm *DatanodeMap) Register(datanode *Datanode) error {
 	dm.Lock()
@@ -110,12 +161,82 @@ func (dm *DatanodeMap) Register(datanode *Datanode) error {
 		return ErrDuplicateRegister
 	}
 	de := &datanodeEntry {
+		RWMutex: &sync.RWMutex{},
 		node: datanode.Clone(),
 		events: make(chan EventRequest, EventBuffer),
 	}
 	dm.datanodes[datanode.Id.Uuid] = de
 
 	return nil
+}
+
+func (dm *DatanodeMap) getDatanodeEntry(uuid string) *datanodeEntry {
+	dm.RLock()
+	defer dm.RUnlock()
+	de, ok := dm.datanodes[uuid]
+	if !ok {
+		return nil
+	}
+
+	return de
+}
+
+const (
+	ReplicateMethod int = iota
+	MaxMethod
+)
+
+type AllocMethodOptions struct {
+	Method int
+	Replicate int
+	StorageType string
+}
+
+
+
+type DatanodeLoc struct {
+	Node *Datanode
+	Storage *DataStorageInfo
+}
+
+func (dm *DatanodeMap) selectDatanodes(params AllocMethodOptions) ([]*DatanodeLoc, error) {
+	count := params.Replicate
+	res := make([]*DatanodeLoc, 0, count)
+	for _, v := range dm.datanodes {
+		dinfo := v.AllocStorages(params.StorageType)
+		if dinfo == nil {
+			log.Printf("dinfo %v", dinfo)
+			continue
+		}
+		dl := &DatanodeLoc {
+			Node: v.node.Clone(),
+			Storage: dinfo,
+		}
+		res = append(res, dl)
+		count--
+		if count == 0 {
+			break
+		}
+	}
+	if count != 0 {
+		return res, ErrFailAlloc
+	}
+
+	return res, nil
+}
+
+func (dm *DatanodeMap) GetDatanodeWithAllocMethod(params AllocMethodOptions) ([]*DatanodeLoc, error) {
+	dm.RLock()
+	defer dm.RUnlock()
+	if params.Method == ReplicateMethod {
+		if len(dm.datanodes) < params.Replicate {
+			return nil, ErrNotSatisfyReplicate
+		}
+
+		return dm.selectDatanodes(params)
+	}
+
+	return nil, ErrInvalidMethod
 }
 
 func NewDatanodeMap() *DatanodeMap {

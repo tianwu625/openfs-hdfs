@@ -4,12 +4,13 @@ import (
 	"encoding/binary"
 	"log"
 	"os"
+	"context"
 
 	"google.golang.org/protobuf/proto"
 )
 
 type RpcDec func([]byte) (proto.Message, error)
-type RpcFunc func(proto.Message) (proto.Message, error)
+type RpcFunc func(context.Context, proto.Message) (proto.Message, error)
 
 type RpcMethod struct {
 	Dec  RpcDec

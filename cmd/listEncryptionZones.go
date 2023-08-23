@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"log"
+	"context"
 
 	hdfs "github.com/openfs/openfs-hdfs/internal/protocol/hadoop_hdfs"
 	"google.golang.org/protobuf/proto"
@@ -12,7 +13,7 @@ func listEncryptionZonesDec(b []byte) (proto.Message, error) {
 	return parseRequest(b, req)
 }
 
-func listEncryptionZones(m proto.Message) (proto.Message, error) {
+func listEncryptionZones(ctx context.Context, m proto.Message) (proto.Message, error) {
 	req := m.(*hdfs.ListEncryptionZonesRequestProto)
 	log.Printf("id %v\n", req.GetId())
 	return opfsListEncryptionZones(req)

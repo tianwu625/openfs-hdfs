@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"log"
+	"context"
 
 	hdfs "github.com/openfs/openfs-hdfs/internal/protocol/hadoop_hdfs"
 	"google.golang.org/protobuf/proto"
@@ -13,7 +14,7 @@ func completeDec(b []byte) (proto.Message, error) {
 	return parseRequest(b, req)
 }
 
-func complete(m proto.Message) (proto.Message, error) {
+func complete(ctx context.Context, m proto.Message) (proto.Message, error) {
 	req := m.(*hdfs.CompleteRequestProto)
 	log.Printf("src %v\nclientName %v\nLast %v\nFileId %v\n", req.GetSrc(), req.GetClientName(), req.GetLast(), req.GetFileId())
 	return opfsComplete(req)

@@ -3,6 +3,7 @@ package cmd
 import (
 	"log"
 	"errors"
+	"context"
 
 	hadoop "github.com/openfs/openfs-hdfs/internal/protocol/hadoop_common"
 	"google.golang.org/protobuf/proto"
@@ -13,7 +14,7 @@ func refreshDec(b []byte) (proto.Message, error) {
 	return parseRequest(b, req)
 }
 
-func refresh(m proto.Message) (proto.Message, error) {
+func refresh(ctx context.Context, m proto.Message) (proto.Message, error) {
 	req := m.(*hadoop.GenericRefreshRequestProto)
 	res, err := opfsRefresh(req)
 	if err != nil {

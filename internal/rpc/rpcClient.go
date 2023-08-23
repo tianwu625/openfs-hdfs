@@ -4,6 +4,7 @@ import (
 	"io"
 	"log"
 	"net"
+	"encoding/hex"
 
 	hadoop "github.com/openfs/openfs-hdfs/internal/protocol/hadoop_common"
 )
@@ -13,7 +14,6 @@ type RpcClient struct {
 	RpcVersionClass byte
 	AuthProtocol    byte
 	ClientId        []byte
-	CallId          int32
 	User            string
 	ClientIp        string
 	Conn            net.Conn
@@ -72,7 +72,7 @@ func ParseHandshake(conn net.Conn) (*RpcClient, error) {
 	}
 	log.Printf("rrh kind %v\nrpcOp %v\ncallid %v\nclientid %v\n",
 		rrh.GetRpcKind(), rrh.GetRpcOp(), rrh.GetCallId(),
-		string(rrh.GetClientId()))
+		string(hex.EncodeToString(rrh.GetClientId())))
 	log.Printf("cc effect user %v\ncc real user %v\ncc protocol %v\n", cc.GetUserInfo().GetEffectiveUser(),
 		cc.GetUserInfo().GetRealUser(), cc.GetProtocol())
 	user := cc.GetUserInfo().GetEffectiveUser()
@@ -91,7 +91,6 @@ func ParseHandshake(conn net.Conn) (*RpcClient, error) {
 		RpcVersionClass: rpcheader[rpcClassPos],
 		AuthProtocol:    rpcheader[authProtoPos],
 		ClientId:        rrh.GetClientId(),
-		CallId:          rrh.GetCallId(),
 		User:            user,
 		ClientIp:        host,
 		Conn:            conn,

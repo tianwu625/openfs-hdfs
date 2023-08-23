@@ -5,6 +5,7 @@ import (
 	iofs "io/fs"
 	"log"
 	"os"
+	"context"
 
 	"github.com/openfs/openfs-hdfs/internal/opfs"
 	hdfs "github.com/openfs/openfs-hdfs/internal/protocol/hadoop_hdfs"
@@ -25,7 +26,7 @@ func getFileInfoDec(b []byte) (proto.Message, error) {
 	return parseRequest(b, req)
 }
 
-func getFileInfo(m proto.Message) (proto.Message, error) {
+func getFileInfo(ctx context.Context, m proto.Message) (proto.Message, error) {
 	req := m.(*hdfs.GetFileInfoRequestProto)
 	log.Printf("src %v\n", req.GetSrc())
 	return opfsGetFileInfo(req)

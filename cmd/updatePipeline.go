@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"log"
+	"context"
 
 	hdfs "github.com/openfs/openfs-hdfs/internal/protocol/hadoop_hdfs"
 	"google.golang.org/protobuf/proto"
@@ -12,7 +13,7 @@ func updatePipelineDec(b []byte) (proto.Message, error) {
 	return parseRequest(b, req)
 }
 
-func updatePipeline(m proto.Message) (proto.Message, error) {
+func updatePipeline(ctx context.Context, m proto.Message) (proto.Message, error) {
 	req := m.(*hdfs.UpdatePipelineRequestProto)
 	log.Printf("clientName %v\nold Block %v\nNew Block %v\nNewNodes %v\nstorageIds %v\n",
 		     req.GetClientName(), req.GetOldBlock(), req.GetNewBlock(), req.GetNewNodes(), req.GetStorageIDs())

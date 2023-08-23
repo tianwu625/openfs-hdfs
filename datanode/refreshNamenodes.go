@@ -1,6 +1,8 @@
 package datanode
 
 import (
+	"context"
+
 	hdfs "github.com/openfs/openfs-hdfs/internal/protocol/hadoop_hdfs"
 	"google.golang.org/protobuf/proto"
 )
@@ -10,7 +12,7 @@ func refreshNamenodesDec(b []byte) (proto.Message, error) {
 	return parseRequest(b, req)
 }
 
-func refreshNamenodes(m proto.Message) (proto.Message, error) {
+func refreshNamenodes(ctx context.Context, m proto.Message) (proto.Message, error) {
 	req := m.(*hdfs.RefreshNamenodesRequestProto)
 	res, err := opfsRefreshNamenodes(req)
 	if err != nil {

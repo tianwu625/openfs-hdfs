@@ -4,6 +4,7 @@ import (
 	"log"
 	"os"
 	"math"
+	"context"
 
 	"github.com/openfs/openfs-hdfs/internal/opfs"
 	hdfs "github.com/openfs/openfs-hdfs/internal/protocol/hadoop_hdfs"
@@ -16,7 +17,7 @@ func getBlockLocationsDec(b []byte) (proto.Message, error) {
 	return parseRequest(b, req)
 }
 
-func getBlockLocations(m proto.Message) (proto.Message, error) {
+func getBlockLocations(ctx context.Context, m proto.Message) (proto.Message, error) {
 	req := m.(*hdfs.GetBlockLocationsRequestProto)
 	log.Printf("src %v\noffset %v\nLength %v\n", req.GetSrc(), req.GetOffset(), req.GetLength())
 	return opfsGetBlockLocations(req)

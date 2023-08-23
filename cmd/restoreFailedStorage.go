@@ -3,6 +3,7 @@ package cmd
 import (
 	"log"
 	"fmt"
+	"context"
 
 	hdfs "github.com/openfs/openfs-hdfs/internal/protocol/hadoop_hdfs"
 	"google.golang.org/protobuf/proto"
@@ -13,7 +14,7 @@ func restoreFailedStorageDec(b []byte) (proto.Message, error) {
 	return parseRequest(b, req)
 }
 
-func restoreFailedStorage(m proto.Message) (proto.Message, error) {
+func restoreFailedStorage(ctx context.Context, m proto.Message) (proto.Message, error) {
 	req := m.(*hdfs.RestoreFailedStorageRequestProto)
 	log.Printf("args %v\n", req.GetArg())
 	return opfsRestoreFailedStorage(req)

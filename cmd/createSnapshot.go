@@ -10,6 +10,7 @@ import (
 	"path"
 	"strings"
 	"os"
+	"context"
 
 	"github.com/openfs/openfs-hdfs/internal/opfs"
 	hdfs "github.com/openfs/openfs-hdfs/internal/protocol/hadoop_hdfs"
@@ -22,7 +23,7 @@ func createSnapshotDec(b []byte) (proto.Message, error) {
 	return parseRequest(b, req)
 }
 
-func createSnapshot(m proto.Message) (proto.Message, error) {
+func createSnapshot(ctx context.Context,m proto.Message) (proto.Message, error) {
 	req := m.(*hdfs.CreateSnapshotRequestProto)
 	res, err := opfsCreateSnapshot(req)
 	if err != nil {

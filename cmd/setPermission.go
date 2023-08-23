@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"context"
 	"log"
 	"os"
 
@@ -14,7 +15,7 @@ func setPermissionDec(b []byte) (proto.Message, error) {
 	return parseRequest(b, req)
 }
 
-func setPermission(m proto.Message) (proto.Message, error) {
+func setPermission(ctx context.Context, m proto.Message) (proto.Message, error) {
 	req := m.(*hdfs.SetPermissionRequestProto)
 	log.Printf("src %v\nperm %o\n", req.GetSrc(), req.GetPermission().GetPerm())
 	return opfsSetPermission(req)

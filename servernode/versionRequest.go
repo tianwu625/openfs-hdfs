@@ -6,6 +6,7 @@ import (
 	"strings"
 	"strconv"
 	"fmt"
+	"context"
 
 	"github.com/openfs/openfs-hdfs/internal/opfs"
 	hdfs "github.com/openfs/openfs-hdfs/internal/protocol/hadoop_hdfs"
@@ -18,7 +19,7 @@ func versionRequestDec(b []byte) (proto.Message, error) {
 	return rpc.ParseRequest(b, req)
 }
 
-func versionRequest(m proto.Message) (proto.Message, error) {
+func versionRequest(ctx context.Context, m proto.Message) (proto.Message, error) {
 	req := m.(*hdfs.VersionRequestProto)
 	res, err := opfsVersionRequest(req)
 	if err != nil {
@@ -101,7 +102,7 @@ func opfsVersionRequest(r *hdfs.VersionRequestProto) (*hdfs.VersionResponseProto
 				CTime: proto.Uint64(info.ctime),
 			},
 			SoftwareVersion: proto.String("3.3.5"),
-			Capabilities: proto.Uint64(fsinfo.Capacity),
+			Capabilities: proto.Uint64(1),
 			State: hdfs.NNHAStatusHeartbeatProto_ACTIVE.Enum(),
 		},
 	}, nil

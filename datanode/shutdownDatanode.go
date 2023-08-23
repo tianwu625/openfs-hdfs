@@ -1,6 +1,7 @@
 package datanode
 
 import (
+	"context"
 	"log"
 
 	hdfs "github.com/openfs/openfs-hdfs/internal/protocol/hadoop_hdfs"
@@ -12,7 +13,7 @@ func shutdownDatanodeDec(b []byte) (proto.Message, error) {
 	return parseRequest(b, req)
 }
 
-func shutdownDatanode(m proto.Message) (proto.Message, error) {
+func shutdownDatanode(ctx context.Context, m proto.Message) (proto.Message, error) {
 	req := m.(*hdfs.ShutdownDatanodeRequestProto)
 	res, err := opfsShutdownDatanode(req)
 	if err != nil {

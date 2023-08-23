@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"context"
 	"log"
 	iofs "io/fs"
 
@@ -14,7 +15,7 @@ func mkdirsDec(b []byte) (proto.Message, error) {
 	return parseRequest(b, req)
 }
 
-func mkdirs(m proto.Message) (proto.Message, error) {
+func mkdirs(ctx context.Context, m proto.Message) (proto.Message, error) {
 	req := m.(*hdfs.MkdirsRequestProto)
 	log.Printf("src %v\nmasked %o\ncreateparent %v\numask %o\n", req.GetSrc(),
 	req.GetMasked().GetPerm(), req.GetCreateParent(), req.GetUnmasked().GetPerm())

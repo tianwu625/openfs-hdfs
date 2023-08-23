@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"context"
 	"log"
 
 	"github.com/openfs/openfs-hdfs/internal/opfs"
@@ -13,7 +14,7 @@ func removeAclDec(b []byte) (proto.Message, error) {
 	return parseRequest(b, req)
 }
 
-func removeAcl(m proto.Message) (proto.Message, error) {
+func removeAcl(ctx context.Context, m proto.Message) (proto.Message, error) {
 	req := m.(*hdfs.RemoveAclRequestProto)
 	log.Printf("src %v\n", req.GetSrc())
 	return opfsRemoveAcl(req)

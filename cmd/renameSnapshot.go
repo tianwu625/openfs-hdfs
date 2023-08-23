@@ -4,6 +4,7 @@ import (
 	"os"
 	"path"
 	"log"
+	"context"
 
 	"github.com/openfs/openfs-hdfs/internal/opfs"
 	hdfs "github.com/openfs/openfs-hdfs/internal/protocol/hadoop_hdfs"
@@ -16,7 +17,7 @@ func renameSnapshotDec(b []byte) (proto.Message, error) {
 	return parseRequest(b, req)
 }
 
-func renameSnapshot(m proto.Message) (proto.Message, error) {
+func renameSnapshot(ctx context.Context,m proto.Message) (proto.Message, error) {
 	req := m.(*hdfs.RenameSnapshotRequestProto)
 	res, err := opfsRenameSnapshot(req)
 	if err != nil {

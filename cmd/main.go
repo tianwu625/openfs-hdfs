@@ -10,6 +10,8 @@ import (
 	hconf "github.com/openfs/openfs-hdfs/hadoopconf"
 	iam "github.com/openfs/openfs-hdfs/internal/iam"
 	reconf "github.com/openfs/openfs-hdfs/internal/reconfig"
+	"github.com/openfs/openfs-hdfs/internal/logger"
+	hc "github.com/openfs/openfs-hdfs/internal/logger/target/console"
 )
 
 const (
@@ -250,8 +252,19 @@ func getCoreConf() hconf.HadoopConf {
 	return core
 }
 
+func logInit() error {
+	logger.Init(GOPATH, GOROOT)
+	consoleLog := hc.New()
+	if err := logger.AddSystemTarget(consoleLog); err != nil {
+		return err
+	}
+
+	return nil
+}
+
 func Main(args []string) {
 	opfs.Init("/")
+	logInit()
 	core := getCoreConf()
 	StartDataNode(core)
 	StartNameNode(core)

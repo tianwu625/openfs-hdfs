@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"context"
 	hadoop "github.com/openfs/openfs-hdfs/internal/protocol/hadoop_common"
 	"google.golang.org/protobuf/proto"
 )
@@ -10,7 +11,7 @@ func refreshCallQueueDec(b []byte) (proto.Message, error) {
 	return parseRequest(b, req)
 }
 
-func refreshCallQueue(m proto.Message) (proto.Message, error) {
+func refreshCallQueue(ctx context.Context,m proto.Message) (proto.Message, error) {
 	req := m.(*hadoop.RefreshCallQueueRequestProto)
 	return opfsRefreshCallQueue(req)
 }

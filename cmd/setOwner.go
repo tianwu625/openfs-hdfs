@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"context"
 	"log"
 	"os/exec"
 	"path"
@@ -17,7 +18,7 @@ func setOwnerDec(b []byte) (proto.Message, error) {
 	return parseRequest(b, req)
 }
 
-func setOwner(m proto.Message) (proto.Message, error) {
+func setOwner(ctx context.Context, m proto.Message) (proto.Message, error) {
 	req := m.(*hdfs.SetOwnerRequestProto)
 	log.Printf("src %v\nusername %v\ngroupname %v\n", req.GetSrc(), req.GetUsername(), req.GetGroupname())
 	return opfsSetOwner(req)

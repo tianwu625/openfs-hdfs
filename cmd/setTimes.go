@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"context"
 	"time"
 	"log"
 	"math"
@@ -15,7 +16,7 @@ func setTimesDec(b []byte) (proto.Message, error) {
 	return parseRequest(b, req)
 }
 
-func setTimes(m proto.Message) (proto.Message, error) {
+func setTimes(ctx context.Context, m proto.Message) (proto.Message, error) {
 	req := m.(*hdfs.SetTimesRequestProto)
 	log.Printf("src %v\nmtime %v\natime %v\n", req.GetSrc(), req.GetMtime(), req.GetAtime())
 	return opfsSetTimes(req)

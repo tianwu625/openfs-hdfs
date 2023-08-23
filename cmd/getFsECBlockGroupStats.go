@@ -1,6 +1,8 @@
 package cmd
 
 import (
+	"context"
+
 	hdfs "github.com/openfs/openfs-hdfs/internal/protocol/hadoop_hdfs"
 	"google.golang.org/protobuf/proto"
 )
@@ -10,7 +12,7 @@ func getFsECBlockGroupStatsDec(b []byte) (proto.Message, error) {
 	return parseRequest(b, req)
 }
 
-func getFsECBlockGroupStats(m proto.Message) (proto.Message, error) {
+func getFsECBlockGroupStats(ctx context.Context, m proto.Message) (proto.Message, error) {
 	req := m.(*hdfs.GetFsECBlockGroupStatsRequestProto)
 	return opfsGetFsECBlockGroupStats(req)
 }

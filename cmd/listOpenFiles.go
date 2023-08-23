@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"context"
 	"log"
 
 	hdfs "github.com/openfs/openfs-hdfs/internal/protocol/hadoop_hdfs"
@@ -12,7 +13,7 @@ func listOpenFilesDec(b []byte) (proto.Message, error) {
 	return parseRequest(b, req)
 }
 
-func listOpenFiles(m proto.Message) (proto.Message, error) {
+func listOpenFiles(ctx context.Context, m proto.Message) (proto.Message, error) {
 	req := m.(*hdfs.ListOpenFilesRequestProto)
 	res, err := opfsListOpenFiles(req)
 	if err != nil {

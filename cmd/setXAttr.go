@@ -4,6 +4,7 @@ import (
 	"log"
 	"fmt"
 	"errors"
+	"context"
 
 	"github.com/openfs/openfs-hdfs/internal/opfs"
 	hdfs "github.com/openfs/openfs-hdfs/internal/protocol/hadoop_hdfs"
@@ -15,7 +16,7 @@ func setXAttrDec(b []byte) (proto.Message, error) {
 	return parseRequest(b, req)
 }
 
-func setXAttr(m proto.Message) (proto.Message, error) {
+func setXAttr(ctx context.Context, m proto.Message) (proto.Message, error) {
 	req := m.(*hdfs.SetXAttrRequestProto)
 	log.Printf("src %v\nxattr %v\nflag %v\n", req.GetSrc(), req.GetXAttr(), req.GetFlag())
 	return opfsSetXAttr(req)

@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"context"
 	"log"
 	"os"
 
@@ -14,7 +15,7 @@ func appendFileDec(b []byte) (proto.Message, error) {
 	return parseRequest(b, req)
 }
 
-func appendFile(m proto.Message) (proto.Message, error) {
+func appendFile(ctx context.Context, m proto.Message) (proto.Message, error) {
 	req := m.(*hdfs.AppendRequestProto)
 	log.Printf("src %v\nclientName %v\nFlag %v\n", req.GetSrc(), req.GetClientName(), req.GetFlag())
 	checkPosixPermission(&posixCheckPermissionRequest {

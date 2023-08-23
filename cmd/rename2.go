@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"context"
 	"log"
 	"os"
 
@@ -14,7 +15,7 @@ func rename2Dec(b []byte) (proto.Message, error) {
 	return parseRequest(b, req)
 }
 
-func rename2(m proto.Message) (proto.Message, error) {
+func rename2(ctx context.Context, m proto.Message) (proto.Message, error) {
 	req := m.(*hdfs.Rename2RequestProto)
 	log.Printf("src %v\ndst %v\nOverwriteDest %v\nMoveToTrash %v\n", req.GetSrc(),
 	req.GetDst(), req.GetOverwriteDest(), req.GetMoveToTrash())

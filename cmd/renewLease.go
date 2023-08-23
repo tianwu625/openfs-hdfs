@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"context"
 	"fmt"
 	"time"
 	"log"
@@ -14,7 +15,7 @@ func renewLeaseDec(b []byte) (proto.Message, error) {
 	return parseRequest(b, req)
 }
 
-func renewLease(m proto.Message) (proto.Message, error) {
+func renewLease(ctx context.Context,m proto.Message) (proto.Message, error) {
 	req := m.(*hdfs.RenewLeaseRequestProto)
 	log.Printf("client %v", req.GetClientName())
 	log.Printf("namespace %v", req.GetNamespaces())

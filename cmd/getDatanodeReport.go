@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"context"
 	"log"
 	"os"
 
@@ -13,7 +14,7 @@ func getDatanodeReportDec(b []byte) (proto.Message, error) {
 	return parseRequest(b, req)
 }
 
-func getDatanodeReport(m proto.Message) (proto.Message, error) {
+func getDatanodeReport(ctx context.Context,m proto.Message) (proto.Message, error) {
 	req := m.(*hdfs.GetDatanodeReportRequestProto)
 	log.Printf("type %v\n", req.GetType())
 	return opfsGetDatanodeReport(req)

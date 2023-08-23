@@ -4,6 +4,7 @@ import (
 	"log"
 	"fmt"
 	"os"
+	"context"
 
 	"github.com/openfs/openfs-hdfs/internal/opfs"
 	hdfs "github.com/openfs/openfs-hdfs/internal/protocol/hadoop_hdfs"
@@ -15,7 +16,7 @@ func modifyAclEntriesDec(b []byte) (proto.Message, error) {
 	return parseRequest(b, req)
 }
 
-func modifyAclEntries(m proto.Message) (proto.Message, error) {
+func modifyAclEntries(ctx context.Context, m proto.Message) (proto.Message, error) {
 	req := m.(*hdfs.ModifyAclEntriesRequestProto)
 	log.Printf("src %v\naclspec %v\n", req.GetSrc(), req.GetAclSpec())
 	return opfsSetAclEntries(req)

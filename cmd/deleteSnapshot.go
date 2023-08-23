@@ -3,6 +3,7 @@ package cmd
 import (
 	"log"
 	"path"
+	"context"
 
 	"github.com/openfs/openfs-hdfs/internal/opfs"
 	hdfs "github.com/openfs/openfs-hdfs/internal/protocol/hadoop_hdfs"
@@ -15,7 +16,7 @@ func deleteSnapshotDec(b []byte) (proto.Message, error) {
 	return parseRequest(b, req)
 }
 
-func deleteSnapshot(m proto.Message) (proto.Message, error) {
+func deleteSnapshot(ctx context.Context,m proto.Message) (proto.Message, error) {
 	req := m.(*hdfs.DeleteSnapshotRequestProto)
 	res, err := opfsDeleteSnapshot(req)
 	if err != nil {

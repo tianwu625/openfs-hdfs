@@ -1,6 +1,7 @@
 package datanode
 
 import (
+	"context"
 	"log"
 
 	hdfs "github.com/openfs/openfs-hdfs/internal/protocol/hadoop_hdfs"
@@ -12,7 +13,7 @@ func deleteBlockPoolDec(b []byte) (proto.Message, error) {
 	return parseRequest(b, req)
 }
 
-func deleteBlockPool(m proto.Message) (proto.Message, error) {
+func deleteBlockPool(ctx context.Context, m proto.Message) (proto.Message, error) {
 	req := m.(*hdfs.DeleteBlockPoolRequestProto)
 	res, err := opfsDeleteBlockPool(req)
 	if err != nil {

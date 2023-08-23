@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"os/exec"
 	"strings"
+	"context"
 
 	"github.com/openfs/openfs-hdfs/internal/opfs"
 	hdfs "github.com/openfs/openfs-hdfs/internal/protocol/hadoop_hdfs"
@@ -19,7 +20,7 @@ func getAclStatusDec(b []byte) (proto.Message, error) {
 	return parseRequest(b, req)
 }
 
-func getAclStatus(m proto.Message) (proto.Message, error) {
+func getAclStatus(ctx context.Context,m proto.Message) (proto.Message, error) {
 	req := m.(*hdfs.GetAclStatusRequestProto)
 	log.Printf("src %v\n", req.GetSrc())
 	return opfsGetAclStatus(req)

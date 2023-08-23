@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"context"
 	"log"
 
 	hdfs "github.com/openfs/openfs-hdfs/internal/protocol/hadoop_hdfs"
@@ -12,7 +13,7 @@ func saveNamespaceDec(b []byte) (proto.Message, error) {
 	return parseRequest(b, req)
 }
 
-func saveNamespace(m proto.Message) (proto.Message, error) {
+func saveNamespace(ctx context.Context, m proto.Message) (proto.Message, error) {
 	req := m.(*hdfs.SaveNamespaceRequestProto)
 	log.Printf("timewindows %v, txgap %v", req.GetTimeWindow(), req.GetTxGap())
 	return opfsSaveNamespace(req)

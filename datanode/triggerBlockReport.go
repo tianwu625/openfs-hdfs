@@ -2,6 +2,7 @@ package datanode
 
 import (
 	"log"
+	"context"
 
 	hdfs "github.com/openfs/openfs-hdfs/internal/protocol/hadoop_hdfs"
 	"google.golang.org/protobuf/proto"
@@ -12,7 +13,7 @@ func triggerBlockReportDec(b []byte) (proto.Message, error) {
 	return parseRequest(b, req)
 }
 
-func triggerBlockReport(m proto.Message) (proto.Message, error) {
+func triggerBlockReport(ctx context.Context, m proto.Message) (proto.Message, error) {
 	req := m.(*hdfs.TriggerBlockReportRequestProto)
 	res, err := opfsTriggerBlockReportRequest(req)
 	if err != nil {

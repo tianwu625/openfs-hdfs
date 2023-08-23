@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"context"
 	"log"
 	"sync"
 	"path"
@@ -20,7 +21,7 @@ func setSafeModeDec(b []byte) (proto.Message, error) {
 	return parseRequest(b, req)
 }
 
-func setSafeMode(m proto.Message) (proto.Message, error) {
+func setSafeMode(ctx context.Context,m proto.Message) (proto.Message, error) {
 	req := m.(*hdfs.SetSafeModeRequestProto)
 	log.Printf("Action %v\nchecked %v\n", req.GetAction(), req.GetChecked())
 	return opfsSetSafeMode(req)

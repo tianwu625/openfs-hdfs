@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"context"
 	"log"
 
 	hdfs "github.com/openfs/openfs-hdfs/internal/protocol/hadoop_hdfs"
@@ -12,7 +13,7 @@ func metaSaveDec(b []byte) (proto.Message, error) {
 	return parseRequest(b, req)
 }
 
-func metaSave(m proto.Message) (proto.Message, error) {
+func metaSave(ctx context.Context, m proto.Message) (proto.Message, error) {
 	req := m.(*hdfs.MetaSaveRequestProto)
 	log.Printf("filename %v", req.GetFilename())
 	res, err := opfsMetaSave(req)

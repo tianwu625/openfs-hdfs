@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"context"
 	"log"
 
 	hadoop "github.com/openfs/openfs-hdfs/internal/protocol/hadoop_common"
@@ -12,7 +13,7 @@ func getGroupsForUserDec(b []byte) (proto.Message, error) {
 	return parseRequest(b, req)
 }
 
-func getGroupsForUser(m proto.Message) (proto.Message, error) {
+func getGroupsForUser(ctx context.Context, m proto.Message) (proto.Message, error) {
 	req := m.(*hadoop.GetGroupsForUserRequestProto)
 	log.Printf("user %v", req.GetUser())
 	return opfsGetGroupsForUser(req)

@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"context"
 	"log"
 	hdfs "github.com/openfs/openfs-hdfs/internal/protocol/hadoop_hdfs"
 	"google.golang.org/protobuf/proto"
@@ -11,7 +12,7 @@ func setBalancerBandwidthDec(b []byte) (proto.Message, error) {
 	return parseRequest(b, req)
 }
 
-func setBalancerBandwidth(m proto.Message) (proto.Message, error) {
+func setBalancerBandwidth(ctx context.Context, m proto.Message) (proto.Message, error) {
 	req := m.(*hdfs.SetBalancerBandwidthRequestProto)
 	log.Printf("bandwidth", req.GetBandwidth())
 	res, err := opfsSetBalancerBandwidth(req)

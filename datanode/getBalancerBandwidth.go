@@ -1,6 +1,8 @@
 package datanode
 
 import (
+	"context"
+
 	hdfs "github.com/openfs/openfs-hdfs/internal/protocol/hadoop_hdfs"
 	"google.golang.org/protobuf/proto"
 )
@@ -10,7 +12,7 @@ func getBalancerBandwidthDec(b []byte) (proto.Message, error) {
 	return parseRequest(b, req)
 }
 
-func getBalancerBandwidth(m proto.Message) (proto.Message, error) {
+func getBalancerBandwidth(ctx context.Context, m proto.Message) (proto.Message, error) {
 	req := m.(*hdfs.GetBalancerBandwidthRequestProto)
 	res, err := opfsGetBalancerBandwidth(req)
 	if err != nil {

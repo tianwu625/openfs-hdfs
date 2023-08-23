@@ -4,6 +4,7 @@ import (
 	"log"
 	"io"
 	"os"
+	"context"
 
 	"github.com/openfs/openfs-hdfs/internal/opfs"
 	hdfs "github.com/openfs/openfs-hdfs/internal/protocol/hadoop_hdfs"
@@ -15,7 +16,7 @@ func concatFileDec(b []byte) (proto.Message, error) {
 	return parseRequest(b, req)
 }
 
-func concatFile(m proto.Message) (proto.Message, error) {
+func concatFile(ctx context.Context, m proto.Message) (proto.Message, error) {
 	req := m.(*hdfs.ConcatRequestProto)
 	log.Printf("dst %v\nsrcs %v\n", req.GetTrg(), req.GetSrcs())
 	return opfsConcatFile(req)

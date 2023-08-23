@@ -6,10 +6,13 @@ import (
 	"os"
 	"io"
 	"path"
+	"fmt"
+	"context"
 
 	"github.com/openfs/openfs-hdfs/internal/opfs"
 	hdfs "github.com/openfs/openfs-hdfs/internal/protocol/hadoop_hdfs"
 	"google.golang.org/protobuf/proto"
+	"github.com/openfs/openfs-hdfs/internal/logger"
 )
 
 var errNotFound = errors.New("not found this entry")
@@ -20,7 +23,7 @@ func getListingDec(b []byte) (proto.Message, error) {
 	return parseRequest(b, req)
 }
 
-func getListing(m proto.Message) (proto.Message, error) {
+func getListing(ctx context.Context, m proto.Message) (proto.Message, error) {
 	req := m.(*hdfs.GetListingRequestProto)
 	log.Printf("src %v\nstart %v\nlocal%v\n", req.GetSrc(), req.GetStartAfter(), req.GetNeedLocation())
 	return opfsGetListing(req)
@@ -116,6 +119,7 @@ func opfsGetListing(r *hdfs.GetListingRequestProto) (proto.Message, error) {
 		}
 		entries = entries[n+1:]
 	}
+	logger.LogIf(nil, fmt.Errorf("test trace info"))
 	res.DirList = new(hdfs.DirectoryListingProto)
 	dlist := make([]*hdfs.HdfsFileStatusProto, 0, len(entries))
 	for _, e := range entries {

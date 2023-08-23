@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"time"
 	"net/url"
+	"sort"
 
 	sacl "github.com/openfs/openfs-hdfs/internal/serviceacl"
 	iam  "github.com/openfs/openfs-hdfs/internal/iam"
@@ -392,27 +393,17 @@ func (h HadoopConf) ParseReconfigDatanode() HadoopConf {
 	return HadoopConf{}
 }
 
-const (
-	DfsDatanodeAddress = "dfs.datanode.address"
-)
-
 func (h HadoopConf) ParseXferAddress() string {
 	return h.getValue(DfsDatanodeAddress)
 }
-
-const DfsDatanodeIpcAddress = "dfs.datanode.ipc.address"
 
 func (h HadoopConf) ParseDataIpcAddress() string {
 	return h.getValue(DfsDatanodeIpcAddress)
 }
 
-const DfsDatanodeHttpAddress = "dfs.datanode.http.address"
-
 func (h HadoopConf) ParseDataHttpAddress() string {
 	return h.getValue(DfsDatanodeHttpAddress)
 }
-
-const DfsDatanodeHttpsAddress = "dfs.datanode.https.address"
 
 func (h HadoopConf) ParseDataHttpsAddress() string {
 	return h.getValue(DfsDatanodeHttpsAddress)
@@ -492,4 +483,152 @@ const DfsBlockSize = "dfs.blocksize"
 
 func (h HadoopConf) ParseBlockSize() uint64 {
 	return h.ParseUint64(DfsBlockSize)
+}
+
+const (
+	defaultFsPrefix = "fs.default"
+	rpcNamenodePrefix = "dfs.namenode.rpc-address."
+	haNamenodePrefix = "dfs.ha.namenodes."
+)
+
+func (h HadoopConf) ParseNamenode() []string {
+	nns := make(map[string]bool)
+	var clusterNames []string
+	for key, value := range h {
+		if strings.Contains(key, defaultFsPrefix) {
+			nnUrl, _ := url.Parse(value)
+			nns[nnUrl.Host] = true
+		} else if strings.HasPrefix(key, rpcNamenodePrefix) {
+			nns[value] = true
+		} else if strings.HasPrefix(key, haNamenodePrefix) {
+			clusterNames = append(clusterNames, key[len(haNamenodePrefix):])
+		}
+	}
+
+	for _, cn := range clusterNames {
+		delete(nns, cn)
+	}
+
+	if len(nns) == 0 {
+		return nil
+	}
+
+	keys := make([]string, 0, len(nns))
+	for k, _ := range nns {
+		keys = append(keys, k)
+	}
+
+	sort.Strings(keys)
+
+	return keys
+}
+
+func (h HadoopConf) ParseDfsHeartbeatInterval() time.Duration {
+	interval, err := strconv.Atoi(h.getValue(DfsHeartbeatInterval))
+	if err != nil {
+		return time.Duration(0)
+	}
+
+	return time.Duration(interval) * time.Second
+}
+
+type DatanodeId struct {
+	IpAddr string
+	XferPort uint32
+	InfoPort uint32
+	IpcPort uint32
+	InfoSecurePort uint32
+}
+
+const (
+	DfsDatanodeAddress = "dfs.datanode.address"
+	DfsDatanodeHttpAddress = "dfs.datanode.http.address"
+	DfsDatanodeIpcAddress = "dfs.datanode.ipc.address"
+	DfsDatanodeHandlerCount = "dfs.datanode.handler.count"
+	DfsDatanodeHttpInternalPort = "dfs.datanode.http.internal-proxy.port"
+	DfsDatanodeHttpsAddress = "dfs.datanode.https.address"
+	DatanodeHttpsPort = "datanode.https.port"
+)
+
+func getPort(port string) (uint32, error) {
+	portInt, err := strconv.Atoi(port)
+	if err != nil {
+		return 0, err
+	}
+
+	return uint32(portInt), nil
+}
+
+func (h HadoopConf) getValueWithErr(key string) (string, error) {
+	s, ok := h[key]
+	if !ok {
+		return "", fmt.Errorf("get %v fail", key)
+	}
+
+	return s, nil
+}
+
+
+func (h HadoopConf) ParseDatanodeId() *DatanodeId {
+	id := new(DatanodeId)
+	host, port, err := net.SplitHostPort(h.getValue(DfsDatanodeAddress))
+	if err != nil {
+		log.Printf("%v split host port fail %v", DfsDatanodeAddress, err)
+		return nil
+	}
+	id.IpAddr = host
+	id.XferPort, err = getPort(port)
+	if err != nil {
+		log.Printf("%v:%v to port fail %v", DfsDatanodeAddress, port, err)
+		return nil
+	}
+	port = h.getValue(DfsDatanodeHttpInternalPort)
+	id.InfoPort, err = getPort(port)
+	if err != nil {
+		log.Printf("%v:%v to port fail %v", DfsDatanodeHttpInternalPort, port, err)
+                return nil
+	}
+	_, err = h.getValueWithErr(DfsDatanodeHttpAddress)
+	if err == nil {
+		_, port, err = net.SplitHostPort(h.getValue(DfsDatanodeHttpAddress))
+		if err != nil {
+			log.Printf("%v split host port fail %v", DfsDatanodeHttpAddress, err)
+			return nil
+		}
+		id.InfoPort, err = getPort(port)
+		if err != nil {
+			log.Printf("%v:%v to port fail %v", DfsDatanodeHttpAddress, port, err)
+			return nil
+		}
+	}
+	_, port, err = net.SplitHostPort(h.getValue(DfsDatanodeIpcAddress))
+	if err != nil {
+		log.Printf("%v split host port fail %v", DfsDatanodeIpcAddress, err)
+                return nil
+	}
+	id.IpcPort, err = getPort(port)
+	if err != nil {
+		log.Printf("%v:%v to port fail %v", DfsDatanodeIpcAddress, port, err)
+                return nil
+	}
+	id.InfoSecurePort, err = getPort(h.getValue(DatanodeHttpsPort))
+	if err != nil {
+		log.Printf("%v:%v to port fail %v", DatanodeHttpsPort, port, err)
+                return nil
+	}
+	_, err = h.getValueWithErr(DfsDatanodeHttpAddress)
+	if err == nil {
+		_, port, err = net.SplitHostPort(h.getValue(DfsDatanodeHttpsAddress))
+		if err != nil {
+			log.Printf("%v split host port fail %v", DfsDatanodeHttpsAddress, err)
+			return nil
+		}
+		id.InfoSecurePort, err = getPort(port)
+		if err != nil {
+			log.Printf("%v:%v to port fail %v", DfsDatanodeHttpsAddress, port, err)
+			return nil
+		}
+	}
+
+	return id
 }

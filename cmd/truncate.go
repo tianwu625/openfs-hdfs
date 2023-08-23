@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"context"
 	"log"
 
 	"github.com/openfs/openfs-hdfs/internal/opfs"
@@ -13,7 +14,7 @@ func truncateDec(b []byte) (proto.Message, error) {
 	return parseRequest(b, req)
 }
 
-func truncate(m proto.Message) (proto.Message, error) {
+func truncate(ctx context.Context, m proto.Message) (proto.Message, error) {
 	req := m.(*hdfs.TruncateRequestProto)
 	log.Printf("src %v\nnewLength %v\nclient name %v\n", req.GetSrc(), req.GetNewLength(), req.GetClientName())
 	return opfsTruncate(req)

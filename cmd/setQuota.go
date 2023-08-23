@@ -4,6 +4,7 @@ import (
 	"errors"
 	"log"
 	"math"
+	"context"
 
 	"github.com/openfs/openfs-hdfs/internal/opfs"
 	hdfs "github.com/openfs/openfs-hdfs/internal/protocol/hadoop_hdfs"
@@ -15,7 +16,7 @@ func setQuotaDec(b []byte) (proto.Message, error) {
 	return parseRequest(b, req)
 }
 
-func setQuota(m proto.Message) (proto.Message, error) {
+func setQuota(ctx context.Context, m proto.Message) (proto.Message, error) {
 	req := m.(*hdfs.SetQuotaRequestProto)
 	res, err := opfsSetQuota(req)
 	if err != nil {

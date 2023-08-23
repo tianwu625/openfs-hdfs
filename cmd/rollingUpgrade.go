@@ -4,6 +4,7 @@ import (
 	"log"
 	"fmt"
 	"time"
+	"context"
 
 	hdfs "github.com/openfs/openfs-hdfs/internal/protocol/hadoop_hdfs"
 	"google.golang.org/protobuf/proto"
@@ -14,7 +15,7 @@ func rollingUpgradeDec(b []byte) (proto.Message, error) {
 	return parseRequest(b, req)
 }
 
-func rollingUpgrade(m proto.Message) (proto.Message, error) {
+func rollingUpgrade(ctx context.Context, m proto.Message) (proto.Message, error) {
 	req := m.(*hdfs.RollingUpgradeRequestProto)
 	res, err := opfsRollingUpgrade(req)
 	if err != nil {

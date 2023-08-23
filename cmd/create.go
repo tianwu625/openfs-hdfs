@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"context"
 	"log"
 	"os"
 	pathutils "path"
@@ -16,7 +17,7 @@ func createDec(b []byte) (proto.Message, error) {
 	return parseRequest(b, req)
 }
 
-func create(m proto.Message) (proto.Message, error) {
+func create(ctx context.Context, m proto.Message) (proto.Message, error) {
 	req := m.(*hdfs.CreateRequestProto)
 	log.Printf("src %v\nmask %o\nclient %v\ncreateFlag %v\ncreateParent %v\n", req.GetSrc(), req.GetMasked().GetPerm(),
 		   req.GetClientName(), req.GetCreateFlag(), req.GetCreateParent())

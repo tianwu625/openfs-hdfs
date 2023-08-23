@@ -11,14 +11,18 @@ import (
 	"bytes"
 	"hash/crc32"
 	"os"
+	"strings"
+	"path"
 
 	hdfs "github.com/openfs/openfs-hdfs/internal/protocol/hadoop_hdfs"
+	hdsp "github.com/openfs/openfs-hdfs/internal/protocol/hadoop_server"
 	"github.com/openfs/openfs-hdfs/internal/opfs"
 	xfer "github.com/openfs/openfs-hdfs/internal/transfer"
 	"google.golang.org/protobuf/proto"
 )
 
 func opWriteBlock(r *hdfs.OpWriteBlockProto) (*hdfs.BlockOpResponseProto, *dataTask, error) {
+	log.Printf("opWriteBlock req %v", r)
 	res := new(hdfs.BlockOpResponseProto)
 	header := r.GetHeader().GetBaseHeader()
 	client := r.GetHeader().GetClientName()
@@ -37,11 +41,20 @@ func opWriteBlock(r *hdfs.OpWriteBlockProto) (*hdfs.BlockOpResponseProto, *dataT
 		        minrecv, maxrecv, laststamp, checksum)
 	log.Printf("opWriteBlock: poolid %v\nblock id %v\ngs %v\nnum %v\n", block.GetPoolId(), block.GetBlockId(),
 			block.GetGenerationStamp(), block.GetNumBytes())
+	blockSize := globalDatanodeSys.constConf.blockSize
+	src := block.GetPoolId()
+	off := int64(block.GetBlockId() * blockSize)
+	if !strings.Contains(src, "/") {
+		off = 0
+		src = path.Join("/", block.GetPoolId(), fmt.Sprintf("%d", block.GetBlockId()))
+	}
 	t := dataTask {
-		src: block.GetPoolId(),
+		block: block,
+		storageId: r.GetStorageId(),
+		src: src,
 		op: "write",
-		off: int64(block.GetBlockId() * defaultBlockSize),
-		size: int64(defaultBlockSize),
+		off: off,
+		size: int64(blockSize),
 		checkMethod: checksum.GetType().String(),
 		bytesPerCheck: checksum.GetBytesPerChecksum(),
 	}
@@ -177,14 +190,77 @@ func sentReply(seqno int64, err error, conn net.Conn) {
 		log.Printf("sent reply failed %v\n", err)
 	}
 }
+/*
+req registration:{datanodeID:{ipAddr:"0.0.0.0" hostName:"ec-1" datanodeUuid:"9b612313-b002-436a-9261-174a7045c8b1" xferPort:9866 infoPort:9864 ipcPort:9867 infoSecurePort:0} storageInfo:{layoutVersion:4294967239 namespceID:1349015764 clusterID:"CID-77a6faeb-66f5-4743-8370-807e2413d3c1" cTime:1690428558063} keys:{isBlockTokenEnabled:false keyUpdateInterval:0 tokenLifeTime:0 currentKey:{keyId:0 expiryDate:0 keyBytes:""}} softwareVersion:"3.3.5"} blockPoolId:"/" blocks:{storageUuid:"DS-63eed32d-6258-4b37-bda5-b3294d30e365" blocks:{block:{blockId:1692606483 genStamp:6483 numBytes:5299} status:RECEIVED} storage:{storageUuid:"DS-63eed32d-6258-4b37-bda5-b3294d30e365" state:NORMAL storageType:DISK}}
+*/
 
+func opfsUpdateBlockStatus(block *hdfs.ExtendedBlockProto, storageId string, totalSize int, status, deleteHit string) {
+	hclient := globalDatanodeSys.getNamenode()
+	opts := hclient.RpcServerConnector.GetOptions()
+	opts.AlwaysRetry = true
+	client := NewNamenodeRpc(namenodeRpcOptions{
+		opts: &opts,
+	})
+	client.reg = hclient.reg
+	client.poolId = hclient.poolId
+	var s hdsp.ReceivedDeletedBlockInfoProto_BlockStatus
+	switch status {
+	case hdsp.ReceivedDeletedBlockInfoProto_RECEIVING.String():
+		s = hdsp.ReceivedDeletedBlockInfoProto_RECEIVING
+	case hdsp.ReceivedDeletedBlockInfoProto_RECEIVED.String():
+		s = hdsp.ReceivedDeletedBlockInfoProto_RECEIVED
+	case hdsp.ReceivedDeletedBlockInfoProto_DELETED.String():
+		s = hdsp.ReceivedDeletedBlockInfoProto_DELETED
+	default:
+		panic(fmt.Errorf("status unknow %v", status))
+	}
+
+	req := &hdsp.BlockReceivedAndDeletedRequestProto {
+		Registration: client.reg,
+		BlockPoolId: proto.String(client.poolId),
+		Blocks: []*hdsp.StorageReceivedDeletedBlocksProto {
+			&hdsp.StorageReceivedDeletedBlocksProto {
+				StorageUuid: proto.String(storageId),
+				Blocks: []*hdsp.ReceivedDeletedBlockInfoProto {
+					&hdsp.ReceivedDeletedBlockInfoProto {
+						Block: &hdfs.BlockProto {
+							BlockId: proto.Uint64(block.GetBlockId()),
+							GenStamp: proto.Uint64(block.GetGenerationStamp()),
+							NumBytes: proto.Uint64(uint64(totalSize)),
+						},
+						Status: s.Enum(),
+						DeleteHint: proto.String(deleteHit),
+					},
+				},
+				Storage: &hdfs.DatanodeStorageProto {
+					StorageUuid: proto.String(storageId),
+					State: hdfs.DatanodeStorageProto_NORMAL.Enum(),
+					StorageType:hdfs.StorageTypeProto_DISK.Enum(),
+				},
+			},
+		},
+	}
+	log.Printf("send received block req %v", req)
+
+	_, err := client.blockReceivedAndDeleted(req)
+	if err != nil {
+		log.Printf("block %v %v %v report fail %v", block, storageId, status, err)
+		return
+	}
+}
 
 func putDataToFile(t *dataTask, conn net.Conn) error {
-	f, err := opfs.OpenWithCreate(t.src, os.O_RDWR, 0)
+	if err := opfs.MakeDirAll(path.Dir(t.src), shareAllPerm); err != nil {
+		log.Printf("create parent dir %v fail %v", t.src, err)
+		return err
+	}
+	f, err := opfs.OpenWithCreate(t.src, os.O_RDWR|os.O_CREATE, 0)
 	if err != nil {
+		log.Printf("open file %v fail %v", t.src, err)
 		return err
 	}
 	defer f.Close()
+	sum := 0
 	for {
 		log.Printf("in write data\n")
 		b, off, seqno, last, err := getPackData(t, conn)
@@ -200,15 +276,18 @@ func putDataToFile(t *dataTask, conn net.Conn) error {
 		log.Printf("len %v off %v seqno %v last %v err %v\n",
 			len(b), off, seqno, last, err)
 		if len(b) != 0 {
-			_, err := f.WriteAt(b, off + t.off)
+			wsize, err := f.WriteAt(b, off + t.off)
 			if err != nil {
 				log.Printf("write fail %v\n", err)
 				sentReply(seqno, err, conn)
 				continue
 			}
+			sum += wsize
 		}
 		sentReply(seqno, err, conn)
 		if last {
+			log.Printf("all write size %v", sum)
+			go opfsUpdateBlockStatus(t.block, t.storageId, sum, "RECEIVED", "")
 			break
 		}
 	}
