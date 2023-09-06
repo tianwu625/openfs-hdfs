@@ -18,7 +18,7 @@ func blockReportDec(b []byte) (proto.Message, error) {
 func blockReport(ctx context.Context, m proto.Message) (proto.Message, error) {
 	req := m.(*hdsp.BlockReportRequestProto)
 
-	log.Printf("req %v", req)
+	log.Printf("blockReport req %v", req)
 
 	res, err := opfsBlockReport(req)
 	if err != nil {

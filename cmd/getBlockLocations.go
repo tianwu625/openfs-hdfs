@@ -10,6 +10,8 @@ import (
 	hdfs "github.com/openfs/openfs-hdfs/internal/protocol/hadoop_hdfs"
 	hadoop "github.com/openfs/openfs-hdfs/internal/protocol/hadoop_common"
 	"google.golang.org/protobuf/proto"
+	"github.com/openfs/openfs-hdfs/internal/datanodeMap"
+	"github.com/openfs/openfs-hdfs/internal/opfsBlocksMap"
 )
 
 func getBlockLocationsDec(b []byte) (proto.Message, error) {
@@ -51,6 +53,54 @@ func minInt64(nums ...int64) int64{
 	return min
 }
 
+func getStorageType(stype string) hdfs.StorageTypeProto {
+	switch(stype) {
+	case "DISK":
+		return hdfs.StorageTypeProto_DISK
+	}
+	return hdfs.StorageTypeProto_DISK
+}
+
+func convertDatanodeIdProto(d *datanodeMap.Datanode) *hdfs.DatanodeIDProto {
+	return &hdfs.DatanodeIDProto {
+		IpAddr: proto.String(d.Id.Ipaddr),
+		HostName:proto.String(d.Id.Hostname),
+		DatanodeUuid: proto.String(d.Id.Uuid),
+		XferPort: proto.Uint32(d.Id.Xferport),
+		InfoPort: proto.Uint32(d.Id.Infoport),
+		IpcPort: proto.Uint32(d.Id.Ipcport),
+		InfoSecurePort: proto.Uint32(d.Id.Infosecureport),
+	}
+}
+
+func getDatanodeLocs(b *opfsBlocksMap.Blockmap) ([]*hdfs.DatanodeInfoProto, []hdfs.StorageTypeProto, []string) {
+	log.Printf("b %+v", b)
+	locs := b.L
+	infos := make([]*hdfs.DatanodeInfoProto, 0, len(locs))
+	types := make([]hdfs.StorageTypeProto, 0, len(locs))
+	sids := make([]string, 0, len(locs))
+	dm := datanodeMap.GetGlobalDatanodeMap()
+	for _, l := range locs {
+		d := dm.GetDatanodeFromUuid(l.DatanodeUuid)
+		if d == nil {
+			continue
+		}
+		s := dm.GetStorageInfoFromUuid(l.DatanodeUuid, l.StorageUuid)
+		if s == nil {
+			continue
+		}
+		info := &hdfs.DatanodeInfoProto {
+			Id: convertDatanodeIdProto(d),
+		}
+		stype := getStorageType(s.StorageType)
+		infos = append(infos, info)
+		types = append(types, stype)
+		sids = append(sids, s.Uuid)
+	}
+
+	return infos, types, sids
+}
+
 func getDatanodeInfo(eb *hdfs.ExtendedBlockProto) []*hdfs.DatanodeInfoProto {
 	datanodes := make([]*hdfs.DatanodeInfoProto, 0)
 	id := new(hdfs.DatanodeIDProto)
@@ -69,7 +119,79 @@ func getDatanodeInfo(eb *hdfs.ExtendedBlockProto) []*hdfs.DatanodeInfoProto {
 
 	return datanodes
 }
+/*
+blocks fileLength:5333  blocks:{b:{poolId:"/x"  blockId:0  generationStamp:1000  numBytes:5333}  offset:0  locs:{id:{ipAddr:"0.0.0.0"  hostName:"ec-1"  datanodeUuid:"ec-1-127.0.0.1"  xferPort:50010  infoPort:50075  ipcPort:50020  infoSecurePort:50475}}  corrupt:false  blockToken:{identifier:""  password:""  kind:""  service:""}  isCached:false  storageTypes:DISK  storageIDs:"openfs-xx"}  underConstruction:false  lastBlock:{b:{poolId:"/x"  blockId:0  generationStamp:1000  numBytes:5333}  offset:0  locs:{id:{ipAddr:"0.0.0.0"  hostName:"ec-1"  datanodeUuid:"ec-1-127.0.0.1"  xferPort:50010  infoPort:50075  ipcPort:50020  infoSecurePort:50475}}  corrupt:false  blockToken:{identifier:""  password:""  kind:""  service:""}  isCached:false  storageTypes:DISK  storageIDs:"openfs-xx"}  isLastBlockComplete:true
+*/
+func opfsGetBlocks(src string, off uint64, length uint64) (*hdfs.LocatedBlocksProto, error) {
+	size, err := getFileSize(src)
+	if err != nil {
+		return nil, err
+	}
 
+	if int64(off + length) > size {
+		log.Printf("off %v, length %v, size %v, change to %v\n", off, length, size, uint64(size) - off)
+		length = uint64(size) - off
+	}
+
+	bsm := getBlocksMap()
+
+	bs, err := bsm.GetFileAllBlocks(src)
+	if err != nil {
+		if err := bsm.LoadFileAllBlocks(src); err != nil {
+			return nil, err
+		}
+		bs, err = bsm.GetFileAllBlocks(src)
+		if err != nil {
+			return nil, err
+		}
+	}
+	lastb := bs[len(bs) - 1]
+	start, _:= bsm.GetOffIndex(src, off)
+	end, _:= bsm.GetOffIndex(src, off + length - 1)
+	end += 1
+	log.Printf("start %v, end %v", start, end)
+	bs = bs[start:end]
+	blocksProto := &hdfs.LocatedBlocksProto {
+		FileLength: proto.Uint64(uint64(size)),
+		UnderConstruction: proto.Bool(false),
+		Blocks: make([]*hdfs.LocatedBlockProto, 0),
+	}
+	for i, b := range bs {
+		eb := &hdfs.ExtendedBlockProto {
+			PoolId:proto.String(b.B.PoolId),
+			BlockId: proto.Uint64(b.B.BlockId),
+			GenerationStamp: proto.Uint64(b.B.Generation),
+			NumBytes: proto.Uint64(b.B.Num),
+		}
+		lb := &hdfs.LocatedBlockProto {
+			B: eb,
+			Offset: proto.Uint64(b.OffStart),
+			Corrupt: proto.Bool(false),
+			BlockToken: &hadoop.TokenProto{
+				Identifier: []byte{},
+				Password: []byte{},
+				Kind: proto.String(""),
+				Service: proto.String(""),
+			},
+		}
+		lb.Locs, lb.StorageTypes, lb.StorageIDs = getDatanodeLocs(b)
+		lb.IsCached = []bool {
+			false,
+		}
+		blocksProto.Blocks = append(blocksProto.Blocks, lb)
+		if i == len(bs) - 1{
+			blocksProto.LastBlock = lb
+			if b.OffStart == lastb.OffStart {
+				blocksProto.IsLastBlockComplete = proto.Bool(true)
+			} else {
+				blocksProto.IsLastBlockComplete = proto.Bool(false)
+			}
+		}
+	}
+
+	return blocksProto, nil
+}
+/*
 func opfsGetBlocks(src string, off uint64, length uint64) (*hdfs.LocatedBlocksProto, error) {
 	 size, err := getFileSize(src)
 	 if err != nil {
@@ -122,8 +244,7 @@ func opfsGetBlocks(src string, off uint64, length uint64) (*hdfs.LocatedBlocksPr
 	 }
 	 return blocksproto, nil
 }
-
-
+*/
 func opfsGetBlockLocations(r *hdfs.GetBlockLocationsRequestProto)(*hdfs.GetBlockLocationsResponseProto, error) {
 	 res := new(hdfs.GetBlockLocationsResponseProto)
 	 src := r.GetSrc()

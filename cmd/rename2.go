@@ -41,8 +41,7 @@ func opfsRename2(r *hdfs.Rename2RequestProto) (*hdfs.Rename2ResponseProto, error
 		log.Printf("move dst to trash for openfs")
 	}
 
-	err = opfs.Rename(src, dst)
-	if err != nil {
+	if err := renameFile(src, dst); err != nil {
 		return res, err
 	}
 

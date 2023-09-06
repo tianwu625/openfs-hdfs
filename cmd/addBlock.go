@@ -4,11 +4,13 @@ import (
 	"context"
 	"log"
 	"time"
+	"sync/atomic"
 
 	hdfs "github.com/openfs/openfs-hdfs/internal/protocol/hadoop_hdfs"
 	hadoop "github.com/openfs/openfs-hdfs/internal/protocol/hadoop_common"
-	"github.com/openfs/openfs-hdfs/servernode"
+	"github.com/openfs/openfs-hdfs/internal/datanodeMap"
 	"google.golang.org/protobuf/proto"
+	"github.com/openfs/openfs-hdfs/internal/opfsBlocksMap"
 )
 
 func addBlockDec(b []byte) (proto.Message, error) {
@@ -18,8 +20,9 @@ func addBlockDec(b []byte) (proto.Message, error) {
 
 func addBlock(ctx context.Context, m proto.Message) (proto.Message, error) {
 	req := m.(*hdfs.AddBlockRequestProto)
+	log.Printf("---------------------------------------------------")
 	log.Printf("src %v\nclient %v\n", req.GetSrc(), req.GetClientName())
-	log.Printf("Pre %v\nExcludeNodes %v\n", req.GetPrevious(), req.GetExcludeNodes())
+	log.Printf("!!!!!!!!!!!!!Pre %v\nExcludeNodes %v\n", req.GetPrevious(), req.GetExcludeNodes())
 	log.Printf("fileid %v\nfavorNodes %v\n", req.GetFileId(), req.GetFavoredNodes())
 	log.Printf("Flags %v\n", req.GetFlags())
 	return opfsAddBlock(req)
@@ -38,7 +41,7 @@ func init() {
 	genStart = uint64(time.Now().Unix() % 10000)
 }
 
-func convertDatanodeInfoToProto(locs []*servernode.DatanodeLoc) []*hdfs.DatanodeInfoProto {
+func convertDatanodeInfoToProto(locs []*datanodeMap.DatanodeLoc) []*hdfs.DatanodeInfoProto {
 	res := make([]*hdfs.DatanodeInfoProto, 0, len(locs))
 	for _, loc := range locs {
 		node := loc.Node
@@ -59,7 +62,7 @@ func convertDatanodeInfoToProto(locs []*servernode.DatanodeLoc) []*hdfs.Datanode
 	return res
 }
 
-func datanodeStorageToProto(locs []*servernode.DatanodeLoc) []string {
+func datanodeStorageToProto(locs []*datanodeMap.DatanodeLoc) []string {
 	res := make([]string, 0, len(locs))
 
 	for _, loc := range locs {
@@ -69,58 +72,60 @@ func datanodeStorageToProto(locs []*servernode.DatanodeLoc) []string {
 	return res
 }
 
+func getGen() uint64 {
+	return atomic.AddUint64(&genStart, 1)
+}
+
+func convertProtoToBlockMap(b *hdfs.ExtendedBlockProto) *opfsBlocksMap.Blockmap {
+	if b == nil {
+		return nil
+	}
+	return &opfsBlocksMap.Blockmap {
+		B: &opfsBlocksMap.Block {
+			PoolId: b.GetPoolId(),
+			BlockId: b.GetBlockId(),
+			Generation: b.GetGenerationStamp(),
+			Num: b.GetNumBytes(),
+		},
+	}
+}
+
 func opfsAddBlock(r *hdfs.AddBlockRequestProto) (*hdfs.AddBlockResponseProto, error) {
 	res := new(hdfs.AddBlockResponseProto)
 	src := r.GetSrc()
-	size, err := getFileSize(src)
-	if err != nil {
-		return res, err
+	excludeNodes := r.GetExcludeNodes()
+	excludes := make([]string, 0, len(excludeNodes))
+	for _, node := range excludeNodes {
+		excludes = append(excludes, node.GetId().GetDatanodeUuid())
 	}
-	datanodes := servernode.GetGlobalDatanodeMap()
-	options := servernode.AllocMethodOptions {
-		Method: servernode.ReplicateMethod,
-		Replicate: 1,
-		StorageType: "DISK",
-	}
-	locs, err := datanodes.GetDatanodeWithAllocMethod(options)
+	prev := r.GetPrevious()
+	bprev := convertProtoToBlockMap(prev)
+	bsm := getBlocksMap()
+	b, err := bsm.AppendBlock(src, bprev, excludes)
 	if err != nil {
 		return nil, err
 	}
-	log.Printf("locs %v, datanodes %v", locs, datanodes)
-
-	/*
-	eb := new(hdfs.ExtendedBlockProto)
-	eb.PoolId = proto.String(src)
-	eb.BlockId = proto.Uint64(uint64(size/defaultBlockSize))
-	eb.GenerationStamp = proto.Uint64(1000)
-	eb.NumBytes = proto.Uint64(uint64(size%defaultBlockSize))
-	*/
 	eb := &hdfs.ExtendedBlockProto {
-		PoolId: proto.String("/"),
-		BlockId: proto.Uint64(blockStart),
-		GenerationStamp: proto.Uint64(genStart),
-		NumBytes:proto.Uint64(uint64(size%defaultBlockSize)),
+		PoolId:proto.String(b.B.PoolId),
+		BlockId: proto.Uint64(b.B.BlockId),
+		GenerationStamp: proto.Uint64(b.B.Generation),
+		NumBytes: proto.Uint64(b.B.Num),
 	}
-	lb := new(hdfs.LocatedBlockProto)
-	lb.B = eb
-	lb.Offset = proto.Uint64(0)
-//	lb.Offset = proto.Uint64(uint64((size/defaultBlockSize) * defaultBlockSize))
-//	lb.Locs = getDatanodeInfo(eb)
-	lb.Locs = convertDatanodeInfoToProto(locs)
-	lb.Corrupt = proto.Bool(false)
-	lb.BlockToken = new(hadoop.TokenProto)
-	lb.BlockToken.Identifier = []byte{}
-	lb.BlockToken.Password = []byte{}
-	lb.BlockToken.Kind = proto.String("")
-	lb.BlockToken.Service = proto.String("")
+	lb := &hdfs.LocatedBlockProto {
+		B: eb,
+		Offset: proto.Uint64(b.OffStart),
+		Corrupt: proto.Bool(false),
+		BlockToken: &hadoop.TokenProto{
+			Identifier: []byte{},
+			Password: []byte{},
+			Kind: proto.String(""),
+			Service: proto.String(""),
+		},
+	}
+	lb.Locs, lb.StorageTypes, lb.StorageIDs = getDatanodeLocs(b)
 	lb.IsCached = []bool {
 		false,
 	}
-	lb.StorageTypes = []hdfs.StorageTypeProto {
-		hdfs.StorageTypeProto_DISK,
-	}
-	lb.StorageIDs = datanodeStorageToProto(locs)
-	log.Printf("ids %v", lb.StorageIDs)
 	res.Block = lb
 	log.Printf("res %v\n", res)
 

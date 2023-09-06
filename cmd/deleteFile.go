@@ -2,16 +2,15 @@ package cmd
 
 import (
 	"log"
-	"path"
 	"os"
 	"errors"
-	"io"
-	"syscall"
 	"context"
+	"fmt"
 
 	"github.com/openfs/openfs-hdfs/internal/opfs"
 	hdfs "github.com/openfs/openfs-hdfs/internal/protocol/hadoop_hdfs"
 	"google.golang.org/protobuf/proto"
+	"github.com/openfs/openfs-hdfs/internal/logger"
 )
 
 var errNotEmpty = errors.New("Not empty directory")
@@ -24,7 +23,7 @@ func deleteFileDec(b []byte) (proto.Message, error) {
 func deleteFile(ctx context.Context, m proto.Message) (proto.Message, error) {
 	req := m.(*hdfs.DeleteRequestProto)
 	log.Printf("src %v\nrecursive %v\n", req.GetSrc(), req.GetRecursive())
-	res, err := opfsDeleteFile(req)
+	res, err := opfsDeleteFile(ctx, req)
 	if err != nil {
 		return nil, err
 	}
@@ -32,58 +31,7 @@ func deleteFile(ctx context.Context, m proto.Message) (proto.Message, error) {
 	return res, nil
 }
 
-func opfsRemoveAllPath(dirPath string) (err error) {
-	f, err := opfs.Open(dirPath)
-	if err != nil {
-		if os.IsNotExist(err) {
-			return nil
-		}
-		return err
-	}
-	defer f.Close()
-
-	fi, err := f.Stat()
-	if err != nil {
-		if os.IsNotExist(err) {
-			return nil
-		}
-		return err
-	}
-
-	if fi.IsDir() {
-		names, err := f.Readdirnames(-1)
-		if err != nil && err != io.EOF {
-			if os.IsNotExist(err) {
-				return nil
-			}
-			return err
-		}
-		for _, name := range names {
-			newPath := path.Clean(path.Join(dirPath, name))
-			err := opfsRemoveAllPath(newPath)
-			if err != nil {
-				return err
-			}
-		}
-		err = opfs.RemoveDir(dirPath)
-		if err != nil {
-			if os.IsNotExist(err) {
-				return nil
-			} else if errors.Is(err, syscall.ENOTEMPTY) {
-				return errNotEmpty
-			}
-			return err
-		}
-	} else {
-		err := opfs.RemoveFile(dirPath)
-		if err != nil {
-			return err
-		}
-	}
-	return nil
-}
-
-func opfsDeleteFile(r *hdfs.DeleteRequestProto) (*hdfs.DeleteResponseProto, error) {
+func opfsDeleteFile(ctx context.Context, r *hdfs.DeleteRequestProto) (*hdfs.DeleteResponseProto, error) {
 	res := new(hdfs.DeleteResponseProto)
 	res.Result = proto.Bool(false)
 	src := r.GetSrc()
@@ -104,18 +52,18 @@ func opfsDeleteFile(r *hdfs.DeleteRequestProto) (*hdfs.DeleteResponseProto, erro
 	}
 
 	if recursive {
-		err := opfsRemoveAllPath(src)
+		err := removeAllPath(src)
 		if err != nil {
-			log.Printf("fail to remove all path %v\n", err)
+			logger.LogIf(ctx, fmt.Errorf("fail to remove all path %v\n", err))
 			return res, err
 		}
 	} else if !recursive && fi.IsDir() {
-		err := opfs.RemoveDir(src)
+		err := removeDir(src)
 		if err != nil {
 			return res, err
 		}
 	} else if !recursive && !fi.IsDir() {
-		err := opfs.RemoveFile(src)
+		err := removeFile(src)
 		if err != nil {
 			return res, err
 		}

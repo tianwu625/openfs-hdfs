@@ -8,6 +8,7 @@ import (
 	hdfs "github.com/openfs/openfs-hdfs/internal/protocol/hadoop_hdfs"
 	"google.golang.org/protobuf/proto"
 	"github.com/openfs/openfs-hdfs/internal/rpc"
+	"github.com/openfs/openfs-hdfs/internal/datanodeMap"
 )
 
 func sendHeartbeatDec(b []byte) (proto.Message, error) {
@@ -17,7 +18,7 @@ func sendHeartbeatDec(b []byte) (proto.Message, error) {
 
 func sendHeartbeat(ctx context.Context, m proto.Message) (proto.Message, error) {
 	req := m.(*hdsp.HeartbeatRequestProto)
-	log.Printf("req %v", req)
+//	log.Printf("req %v", req)
 	res, err := opfsSendHeartbeat(req)
 	if err != nil {
 		return nil, err
@@ -29,11 +30,10 @@ func sendHeartbeat(ctx context.Context, m proto.Message) (proto.Message, error) 
 var idx uint64 = 0
 var fullBlockReportLeaseId uint64 = 7050185255286347141
 
-func convertStorageReportProtoToDataStorageInfo (reports []*hdfs.StorageReportProto) []*DataStorageInfo {
-	res := make([]*DataStorageInfo, 0, len(reports))
+func convertStorageReportProtoToDataStorageInfo (reports []*hdfs.StorageReportProto) []*datanodeMap.DataStorageInfo {
+	res := make([]*datanodeMap.DataStorageInfo, 0, len(reports))
 	for _, r := range reports {
-		log.Printf("r::::::%v", r)
-		d := &DataStorageInfo {
+		d := &datanodeMap.DataStorageInfo {
 			Uuid: r.GetStorageUuid(),
 			State: r.GetStorage().GetState().String(),
 			Failed: r.GetFailed(),
@@ -44,26 +44,24 @@ func convertStorageReportProtoToDataStorageInfo (reports []*hdfs.StorageReportPr
 			StorageType:r.GetStorage().GetStorageType().String(),
 			NonDfsUsed:r.GetNonDfsUsed(),
 		}
-		log.Printf("heartbeat:::::type %v", d.StorageType)
 		res = append(res, d)
 	}
 	return res
 }
 
 func opfsUpdateDatanodeStorage(reg *hdsp.DatanodeRegistrationProto, reports []*hdfs.StorageReportProto) error {
-	datanodemap := GetGlobalDatanodeMap()
-	node := datanodemap.getDatanodeEntry(reg.GetDatanodeID().GetDatanodeUuid())
+	datanodemap := datanodeMap.GetGlobalDatanodeMap()
+	node := datanodemap.GetDatanodeEntry(reg.GetDatanodeID().GetDatanodeUuid())
 	if node == nil {
-		log.Printf("node %v not in datanodeMap??")
 		err := datanodemap.Register(convertRegisterProtoToDatanode(reg))
 		if err != nil {
 			log.Printf("register failed")
 			return err
 		}
-		node = datanodemap.getDatanodeEntry(reg.GetDatanodeID().GetDatanodeUuid())
+		node = datanodemap.GetDatanodeEntry(reg.GetDatanodeID().GetDatanodeUuid())
 	}
-	info := &DatanodeStorages {
-		storages: convertStorageReportProtoToDataStorageInfo(reports),
+	info := &datanodeMap.DatanodeStorages {
+		Storages: convertStorageReportProtoToDataStorageInfo(reports),
 	}
 	if err := node.UpdateStorages(info); err != nil {
 		return err
@@ -73,11 +71,6 @@ func opfsUpdateDatanodeStorage(reg *hdsp.DatanodeRegistrationProto, reports []*h
 }
 
 func opfsSendHeartbeat(r *hdsp.HeartbeatRequestProto) (*hdsp.HeartbeatResponseProto, error) {
-	log.Printf("register %v\nreports %v\nxmitsInprogress %v\nxceivercount %v\nfailvolumes %v",
-		   r.GetRegistration(), r.GetReports(), r.GetXmitsInProgress(), r.GetXceiverCount(), r.GetFailedVolumes())
-	log.Printf("cache %v\ncache use %v\nvolumefailuresummary %v\nreportlease %v\nslowpeers %v\nslowdisk %v",
-		   r.GetCacheCapacity(), r.GetCacheUsed(), r.GetVolumeFailureSummary(),
-		   r.GetRequestFullBlockReportLease(),r.GetSlowPeers(), r.GetSlowDisks())
 	err := opfsUpdateDatanodeStorage(r.GetRegistration(), r.GetReports())
 	if err != nil {
 		return nil, err

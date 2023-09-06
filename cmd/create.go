@@ -50,6 +50,16 @@ func opfsCreate(r *hdfs.CreateRequestProto) (*hdfs.CreateResponseProto, error) {
 		return res, err
 	}
 	defer f.Close()
+	replicate := int(r.GetReplication())
+	if replicate == 0 {
+		//need a func to find parent and parent's replicate
+		//if no replicate set, use config 
+		replicate = 1
+	}
+	bsm := getBlocksMap()
+	if err := bsm.CreateBlocksMap(src, replicate, r.GetBlockSize()); err != nil {
+		return res, err
+	}
 	fi, err := f.Stat()
 	if err != nil {
 		return res, err

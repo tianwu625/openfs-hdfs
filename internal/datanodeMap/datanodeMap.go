@@ -1,4 +1,4 @@
-package servernode
+package datanodeMap
 
 import (
 	"sync"
@@ -111,7 +111,7 @@ type DataStorageInfo struct {
 }
 
 type DatanodeStorages struct {
-	storages []*DataStorageInfo
+	Storages []*DataStorageInfo
 }
 
 type datanodeEntry struct {
@@ -134,7 +134,7 @@ func (de *datanodeEntry) AllocStorages(stype string) *DataStorageInfo {
 	if de.storages == nil {
 		return nil
 	}
-	for _, s := range de.storages.storages {
+	for _, s := range de.storages.Storages {
 		log.Printf("s %v, type %v s.StorageType == stype %v", s, stype, s.StorageType == stype)
 		if s.StorageType == stype {
 			ns := *s
@@ -181,6 +181,17 @@ func (dm *DatanodeMap) getDatanodeEntry(uuid string) *datanodeEntry {
 	return de
 }
 
+func (dm *DatanodeMap) GetDatanodeEntry(uuid string) *datanodeEntry {
+	dm.RLock()
+	defer dm.RUnlock()
+	de, ok := dm.datanodes[uuid]
+	if !ok {
+		return nil
+	}
+
+	return de
+}
+
 const (
 	ReplicateMethod int = iota
 	MaxMethod
@@ -213,7 +224,7 @@ func (dm *DatanodeMap) GetStorageUuid(datanode string) string {
 	defer dm.RUnlock()
 	for _, de := range dm.datanodes {
 		if de.node.Id.Uuid == datanode {
-			for _, v := range de.storages.storages {
+			for _, v := range de.storages.Storages {
 				return v.Uuid
 			}
 		}
@@ -235,7 +246,7 @@ func (dm *DatanodeMap) GetStorageInfoFromUuid(datanode, uuid string) *DataStorag
 	if de == nil {
 		return nil
 	}
-	for _, v := range de.storages.storages {
+	for _, v := range de.storages.Storages {
 		if uuid == v.Uuid {
 			info := *v
 			return &info

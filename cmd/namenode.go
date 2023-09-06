@@ -4,32 +4,15 @@ import (
 	"errors"
 	"log"
 	"net"
-	"encoding/hex"
-	"context"
-	"fmt"
 
 	hadoop "github.com/openfs/openfs-hdfs/internal/protocol/hadoop_common"
 	"github.com/openfs/openfs-hdfs/internal/rpc"
 	"google.golang.org/protobuf/proto"
 	"github.com/openfs/openfs-hdfs/servernode"
-	"github.com/openfs/openfs-hdfs/internal/logger"
 )
 
-func doNamenodeHandshake(conn net.Conn) {
-	client, err := rpc.ParseHandshake(conn)
-	if err != nil {
-		log.Printf("parse handshake fail %v", err)
-		conn.Close()
-		return
-	}
-	if !globalClientProtoAcl.CheckAllow(client.User, client.ClientIp) {
-		log.Fatal("no permission user %v host %v", client.User, client.ClientIp)
-		// should sent reply for no permission
-	}
-	go handleRpc(client)
-}
-
 var globalrpcMethods *rpc.RpcMethods
+var globalrpcErr *errFunc
 
 func parseRequest(b []byte, req proto.Message) (proto.Message, error) {
 	return rpc.ParseRequest(b, req)
@@ -288,16 +271,23 @@ var RpcClientNamenodeProtoV1 map[string]rpc.RpcMethod = map[string]rpc.RpcMethod
 		Dec: rollingUpgradeDec,
 		Call: rollingUpgrade,
 	},
+	"abandonBlock": rpc.RpcMethod {
+		Dec: abandonBlockDec,
+		Call: abandonBlock,
+	},
 }
 
 func init() {
 	globalrpcMethods = rpc.NewRpcMethods()
 	globalrpcMethods.Register(RpcClientNamenodeProtoV1)
 	globalrpcMethods.Register(servernode.RpcDataServerProtoV1)
+	globalrpcErr = &errFunc{}
 	log.Printf("namenode rpc methods len %v", globalrpcMethods.GetLen())
 }
 
-func errToRpcProtoStatus(err error) *hadoop.RpcResponseHeaderProto_RpcStatusProto {
+type errFunc struct{}
+
+func (e *errFunc)ErrToStatus(err error) *hadoop.RpcResponseHeaderProto_RpcStatusProto {
 	switch {
 	case errors.Is(err, net.ErrClosed):
 		return hadoop.RpcResponseHeaderProto_FATAL.Enum()
@@ -310,7 +300,7 @@ func errToRpcProtoStatus(err error) *hadoop.RpcResponseHeaderProto_RpcStatusProt
 	return hadoop.RpcResponseHeaderProto_SUCCESS.Enum()
 }
 
-func errToDetailErr(err error) *hadoop.RpcResponseHeaderProto_RpcErrorCodeProto {
+func (e *errFunc)ErrToDetail(err error) *hadoop.RpcResponseHeaderProto_RpcErrorCodeProto {
 	switch {
 	default:
 		return hadoop.RpcResponseHeaderProto_ERROR_RPC_SERVER.Enum()
@@ -319,7 +309,7 @@ func errToDetailErr(err error) *hadoop.RpcResponseHeaderProto_RpcErrorCodeProto 
 	return hadoop.RpcResponseHeaderProto_ERROR_RPC_SERVER.Enum()
 }
 
-func errToException(err error) string {
+func (e *errFunc)ErrToException(err error) string {
 	switch {
 	case errors.Is(err, ErrNoRefresh):
 		return "java.lang.IllegalArgumentException"
@@ -334,7 +324,7 @@ func errToException(err error) string {
 	return ""
 }
 
-func errToErrMsg(err error) string {
+func (e *errFunc)ErrToMsg(err error) string {
 	switch {
 	case errors.Is(err, errOnlySupportRoot):
 		return "openfs hdfs snapshot only support operate root directory"
@@ -345,92 +335,4 @@ func errToErrMsg(err error) string {
 	}
 
 	return ""
-}
-
-func MakeRpcResponse(client *rpc.RpcClient, rrh *hadoop.RpcRequestHeaderProto, err error) *hadoop.RpcResponseHeaderProto {
-	status := errToRpcProtoStatus(err)
-	callid := uint32(rrh.GetCallId())
-	clientid := client.ClientId
-
-	rrrh := &hadoop.RpcResponseHeaderProto{
-		CallId:              proto.Uint32(callid),
-		Status:              status,
-		ServerIpcVersionNum: proto.Uint32(rpc.RpcVersion),
-		ClientId:            clientid,
-	}
-
-	if err != nil {
-		rrrh.ExceptionClassName = proto.String(errToException(err))
-		rrrh.ErrorMsg = proto.String(errToErrMsg(err))
-		rrrh.ErrorDetail = errToDetailErr(err)
-	}
-
-	return rrrh
-}
-
-func newContext(client *rpc.RpcClient, method string, id int32, m proto.Message) context.Context {
-	ctx := context.Background()
-
-	reqInfo := &logger.ReqInfo {
-		RemoteHost: client.Conn.RemoteAddr().String(),
-		Host: client.Conn.LocalAddr().String(),
-		ClientID: hex.EncodeToString(client.ClientId),
-		CallID: fmt.Sprintf("%d", id),
-		User: client.User,
-		Method: method,
-	}
-
-	pm := m.ProtoReflect()
-	fields := pm.Descriptor().Fields()
-	for i := 0; i < fields.Len(); i++ {
-		f := fields.Get(i)
-		log.Printf("name %v kind %v value %v", f.Name(), f.Kind(), pm.Get(f))
-		reqInfo.AppendParams(string(f.Name()), pm.Get(f))
-	}
-
-	ctx = logger.SetReqInfo(ctx, reqInfo)
-
-	return ctx
-}
-
-func handleRpc(client *rpc.RpcClient) {
-	for {
-		rrh := new(hadoop.RpcRequestHeaderProto)
-		log.Printf("clentid %v %v, id %v", rrh.GetClientId(), hex.EncodeToString(rrh.GetClientId()), rrh.GetCallId())
-		rh := new(hadoop.RequestHeaderProto)
-		b, err := rpc.ReadRPCHeader(client.Conn, rrh, rh)
-		if err != nil {
-			log.Printf("readHeader fail %v\n", err)
-			break
-		}
-		log.Printf("method %s, protname %s, protocol version %d\n", rh.GetMethodName(),
-			rh.GetDeclaringClassProtocolName(), rh.GetClientProtocolVersion())
-		ms, err := globalrpcMethods.GetMethod(rh.GetMethodName())
-		if err != nil {
-			panic(err)
-		}
-		m, err := ms.Dec(b)
-		if err != nil {
-			log.Printf("dec fail %v\n", err)
-			continue
-		}
-		ctx := newContext(client, rh.GetMethodName(), rrh.GetCallId(), m)
-		logger.LogIf(ctx, fmt.Errorf("test context log whether is ok"))
-		r, err := ms.Call(ctx, m)
-		if err != nil {
-			log.Printf("call fail %v\n", err)
-		}
-		rrrh := MakeRpcResponse(client, rrh, err)
-		b, err = rpc.MakeRPCPacket(rrrh, r)
-		if err != nil {
-			log.Printf("enc fail %v\n", err)
-			continue
-		}
-		_, err = client.Conn.Write(b)
-		if err != nil {
-			log.Printf("send message fail %v\n", err)
-			continue
-		}
-	}
-	client.Conn.Close()
 }

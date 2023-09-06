@@ -30,7 +30,7 @@ func MakePrefixedMessage(msg proto.Message) ([]byte, error) {
 
 	lengthBytes := make([]byte, binary.MaxVarintLen32)
 	n := binary.PutUvarint(lengthBytes, uint64(len(msgBytes)))
-	fmt.Printf("n %v, msgBytes %v\n", n, msgBytes)
+	//fmt.Printf("n %v, msgBytes %v\n", n, msgBytes)
 	return append(lengthBytes[:n], msgBytes...), nil
 }
 

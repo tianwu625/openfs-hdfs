@@ -5,14 +5,10 @@ import (
 	"log"
 	"sync"
 	"path"
-	"io"
-	"os"
-	"bytes"
 	"fmt"
+	"os"
 
-	"github.com/openfs/openfs-hdfs/internal/opfs"
 	hdfs "github.com/openfs/openfs-hdfs/internal/protocol/hadoop_hdfs"
-	jsoniter "github.com/json-iterator/go"
 	"google.golang.org/protobuf/proto"
 )
 
@@ -38,54 +34,6 @@ type opfsHdfsFs struct {
 	*sync.Mutex
 }
 
-func loadFromConfig(src string, object interface{}) error {
-	b, err := opfsReadAll(src)
-	if err != nil {
-		return err
-	}
-	json := jsoniter.ConfigCompatibleWithStandardLibrary
-	if err = json.Unmarshal(b, object); err != nil {
-		return err
-        }
-
-	return nil
-}
-
-func saveToConfig(src string, object interface{}) error {
-	srcTmp := path.Join(hdfsSysDir, tmpdir, GetRandomFileName())
-
-	err := opfs.MakeDirAll(path.Dir(srcTmp), os.FileMode(defaultConfigPerm))
-	if err != nil {
-		return err
-	}
-	f, err := opfs.OpenWithCreate(srcTmp, os.O_WRONLY | os.O_CREATE, os.FileMode(defaultConfigPerm))
-	if err != nil {
-		return err
-	}
-	defer f.Close()
-	defer cleanTmp(srcTmp)
-	json := jsoniter.ConfigCompatibleWithStandardLibrary
-	data, err := json.Marshal(object)
-	if err != nil {
-		return err
-	}
-	if _, err := io.Copy(f, bytes.NewReader(data)); err != nil {
-		return err
-	}
-
-	if err := opfs.MakeDirAll(path.Dir(src), os.FileMode(defaultConfigPerm)); err != nil {
-		log.Printf("mkdir fail %v", err)
-		return err
-	}
-	if err := opfs.Rename(srcTmp, src); err != nil {
-		log.Printf("rename fail %v", err)
-		return err
-	}
-
-	return nil
-}
-
-
 var globalFs *opfsHdfsFs
 
 const (
@@ -106,7 +54,7 @@ func defaultFsMeta() *opfsHdfsFsMeta {
 	}
 }
 
-func InitFsMeta() *opfsHdfsFs {
+func initFsMeta() *opfsHdfsFs {
 	srcFsMeta := path.Join(hdfsSysDir, hdfsFsMeta)
 	meta := new(opfsHdfsFsMeta)
 	err := loadFromConfig(srcFsMeta, meta)

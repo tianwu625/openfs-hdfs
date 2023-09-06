@@ -29,16 +29,16 @@ func opfsRename(r *hdfs.RenameRequestProto) (*hdfs.RenameResponseProto, error) {
 
 	f, err := opfs.Open(dst)
 	if err == nil {
-		f.Close()
+		defer f.Close()
 		return res, os.ErrExist
 	} else if err != nil && !os.IsNotExist(err) {
 		return res, err
 	}
 
-	err = opfs.Rename(src, dst)
-	if err != nil {
+	if err := renameFile(src, dst); err != nil {
 		return res, err
 	}
+
 	res.Result = proto.Bool(true)
 
 	return res, nil

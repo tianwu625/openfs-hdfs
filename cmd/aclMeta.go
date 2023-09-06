@@ -307,11 +307,37 @@ func (c *opfsMetaCache) GetNamespaceQuota(src string) (opfsHdfsNamespaceQuota, e
 	return *e.meta.Quota, nil
 }
 
-func InitAclCache() *opfsMetaCache {
+func (c *opfsMetaCache) Delete (src string) error {
+	c.Lock()
+	defer c.Unlock()
+	delete(c.metas, src)
+	return opfsDeleteMetaEntry(src)
+}
+
+func (c *opfsMetaCache) Rename(src, dst string) error {
+	c.Lock()
+	defer c.Unlock()
+	if err := opfsRenameMetaPath(src, dst); err != nil {
+		return err
+	}
+	e, ok := c.metas[src]
+	if ok {
+		c.metas[dst] = e
+	}
+	delete(c.metas, src)
+
+	return nil
+}
+
+func initMetaCache() *opfsMetaCache {
 	return &opfsMetaCache {
 		MaxEntries: DefaultMaxEntries,
 		CurrentEntries: 0,
 		RWMutex: &sync.RWMutex{},
 		metas: make(map[string]*opfsMetaCacheEntry),
 	}
+}
+
+func getGlobalMeta() *opfsMetaCache {
+	return globalMeta
 }

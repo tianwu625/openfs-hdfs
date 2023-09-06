@@ -145,20 +145,6 @@ func aclToOpfsAcl(acl *opfsHdfsAcl, isDir bool) ([]opfs.AclGrant, error) {
 	return res, nil
 }
 
-func opfsIsDir(src string) (bool, error){
-	f, err := opfs.Open(src)
-	if err != nil {
-		return false, err
-	}
-	defer f.Close()
-	fi, err := f.Stat()
-	if err != nil {
-		return false, err
-	}
-
-	return fi.IsDir(), nil
-}
-
 func sameElem(a1, a2 opfs.AclGrant) bool {
 	if a1.Acltype != a2.Acltype {
 		return false

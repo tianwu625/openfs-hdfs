@@ -53,7 +53,7 @@ func (h *heartbeatManager) processResponse(resp *hdsp.HeartbeatResponseProto) {
 	sys := h.getSys()
 	cmds := resp.GetCmds()
 	for _, cmd := range cmds {
-		log.Printf("cmd %v", cmd)
+		log.Printf("!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!cmd %v", cmd)
 	}
 
 	if h.getFullReport() && resp.GetFullBlockReportLeaseId() != 0 {
@@ -74,12 +74,12 @@ func (h *heartbeatManager) heartbeat() {
 		FailedVolumes: proto.Uint32(0),
 		RequestFullBlockReportLease: proto.Bool(h.getFullReport()),
 	}
-	log.Printf("req %v", req)
+//	log.Printf("req %v", req)
 	resp, err := client.sendHeartbeat(req)
 	if err != nil {
 		log.Printf("send heartbeat fail")
 	}
-	log.Printf("resp %v", resp)
+//	log.Printf("resp %v", resp)
 	h.processResponse(resp)
 }
 

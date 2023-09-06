@@ -21,6 +21,13 @@ import (
 	"google.golang.org/protobuf/proto"
 )
 
+/*
+var (
+	testblocks = 0
+	testpackages = 0
+)
+*/
+
 func opWriteBlock(r *hdfs.OpWriteBlockProto) (*hdfs.BlockOpResponseProto, *dataTask, error) {
 	log.Printf("opWriteBlock req %v", r)
 	res := new(hdfs.BlockOpResponseProto)
@@ -44,7 +51,7 @@ func opWriteBlock(r *hdfs.OpWriteBlockProto) (*hdfs.BlockOpResponseProto, *dataT
 	blockSize := globalDatanodeSys.constConf.blockSize
 	src := block.GetPoolId()
 	off := int64(block.GetBlockId() * blockSize)
-	if !strings.Contains(src, "/") {
+	if !strings.Contains(src, "/") || src == "/" {
 		off = 0
 		src = path.Join("/", block.GetPoolId(), fmt.Sprintf("%d", block.GetBlockId()))
 	}
@@ -66,10 +73,16 @@ func opWriteBlock(r *hdfs.OpWriteBlockProto) (*hdfs.BlockOpResponseProto, *dataT
 		return res, &t, fmt.Errorf("pip is not 0")
 	}
 	*/
+	//testblocks++
 	res.Status = hdfs.Status_SUCCESS.Enum()
 	res.FirstBadLink = proto.String("")
 
 	return res, &t, nil
+	/*
+	res.Status =hdfs.Status_ERROR_UNSUPPORTED.Enum()
+	res.FirstBadLink = proto.String("")
+	return res, &t, fmt.Errorf("pip is not 0")
+	*/
 }
 
 func readPacketHeader(conn net.Conn) (*hdfs.PacketHeaderProto, error) {
@@ -80,11 +93,11 @@ func readPacketHeader(conn net.Conn) (*hdfs.PacketHeaderProto, error) {
 		return nil, err
 	}
 
-	fmt.Printf("head rpc %v\n", binary.BigEndian.Uint32(lengthBytes[:4]))
+//	fmt.Printf("head rpc %v\n", binary.BigEndian.Uint32(lengthBytes[:4]))
 
 	// We don't actually care about the total length.
 	packetHeaderLength := binary.BigEndian.Uint16(lengthBytes[4:])
-	fmt.Printf("length %v\n", packetHeaderLength)
+//	fmt.Printf("length %v\n", packetHeaderLength)
 	packetHeaderBytes := make([]byte, packetHeaderLength)
 	_, err = io.ReadFull(conn, packetHeaderBytes)
 	if err != nil {
@@ -111,7 +124,7 @@ func validateChecksum(b []byte, checksums bytes.Buffer, checktype string, index 
 		checksumTab = crc32.MakeTable(crc32.Castagnoli)
 	}
 	crc := crc32.Checksum(b, checksumTab)
-	fmt.Printf("len b %v, crc %v\n", len(b), crc)
+	//fmt.Printf("len b %v, crc %v\n", len(b), crc)
 	if crc != checksum {
 		return errInvalidChecksum
 	}
@@ -217,7 +230,7 @@ func opfsUpdateBlockStatus(block *hdfs.ExtendedBlockProto, storageId string, tot
 
 	req := &hdsp.BlockReceivedAndDeletedRequestProto {
 		Registration: client.reg,
-		BlockPoolId: proto.String(client.poolId),
+		BlockPoolId: proto.String(block.GetPoolId()),
 		Blocks: []*hdsp.StorageReceivedDeletedBlocksProto {
 			&hdsp.StorageReceivedDeletedBlocksProto {
 				StorageUuid: proto.String(storageId),
@@ -261,8 +274,9 @@ func putDataToFile(t *dataTask, conn net.Conn) error {
 	}
 	defer f.Close()
 	sum := 0
+	//testpackages = 0
 	for {
-		log.Printf("in write data\n")
+		//log.Printf("in write data\n")
 		b, off, seqno, last, err := getPackData(t, conn)
 		if err != nil {
 			log.Printf("get data fail err %v\n", err)
@@ -273,10 +287,17 @@ func putDataToFile(t *dataTask, conn net.Conn) error {
 				continue
 			}
 		}
+		/*
 		log.Printf("len %v off %v seqno %v last %v err %v\n",
 			len(b), off, seqno, last, err)
+		*/
 		if len(b) != 0 {
 			wsize, err := f.WriteAt(b, off + t.off)
+			/*
+			if testblocks == 2 && testpackages == 1 {
+				err = fmt.Errorf("test for fail")
+			}
+			*/
 			if err != nil {
 				log.Printf("write fail %v\n", err)
 				sentReply(seqno, err, conn)
@@ -284,6 +305,7 @@ func putDataToFile(t *dataTask, conn net.Conn) error {
 			}
 			sum += wsize
 		}
+		//testpackages++
 		sentReply(seqno, err, conn)
 		if last {
 			log.Printf("all write size %v", sum)

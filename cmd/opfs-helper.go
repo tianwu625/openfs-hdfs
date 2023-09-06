@@ -301,6 +301,11 @@ func opfsGetMetaEntry(src string) (*opfsMetaCacheEntry, error) {
 	return e, nil
 }
 
+func opfsDeleteMetaEntry(src string) error {
+	srcMeta := opfsGetMetaPath(src)
+	return opfs.RemovePath(srcMeta)
+}
+
 const (
 	tmpdir = "tmp"
 )
@@ -356,3 +361,42 @@ func opfsStoreConfig(src string, e *opfsHdfsMeta) error {
 	return nil
 }
 
+func opfsIsDir(src string) (bool, error){
+	f, err := opfs.Open(src)
+	if err != nil {
+		return false, err
+	}
+	defer f.Close()
+	fi, err := f.Stat()
+	if err != nil {
+		return false, err
+	}
+
+	return fi.IsDir(), nil
+}
+
+func opfsRenameMetaPath(src, dst string) error {
+	srcMeta := opfsGetMetaPath(src)
+	dstMeta := opfsGetMetaPath(dst)
+
+	if err := opfs.MakeDirAll(path.Dir(dstMeta), defaultConfigPerm); err != nil {
+		return err
+	}
+
+	if err := opfs.Rename(srcMeta, dstMeta); err != nil {
+		if os.IsNotExist(err) {
+			return nil
+		}
+		return err
+	}
+
+	if err := opfs.RemovePath(srcMeta); err != nil {
+		log.Printf("remove dir fail %v, %v", path.Dir(srcMeta), err)
+		if os.IsNotExist(err) {
+			return nil
+		}
+		return err
+	}
+
+	return nil
+}

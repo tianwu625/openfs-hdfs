@@ -3,8 +3,10 @@ package cmd
 import (
 	"sync"
 	"log"
+	"syscall"
 
 	sacl "github.com/openfs/openfs-hdfs/internal/serviceacl"
+	"github.com/openfs/openfs-hdfs/internal/rpc"
 )
 
 type serviceAclConf struct {
@@ -37,6 +39,14 @@ func (sac *serviceAclConf) CheckAllow(user, ip string) bool {
 	}
 	log.Printf("enable sac %v", sac)
 	return sac.ServiceAcl.CheckAllow(user, ip)
+}
+
+func (sac *serviceAclConf) HandshakeAfter(client *rpc.RpcClient) error {
+	if !sac.CheckAllow(client.User, client.ClientIp) {
+		return syscall.EPERM
+	}
+
+	return nil
 }
 
 

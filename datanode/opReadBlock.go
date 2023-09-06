@@ -5,6 +5,8 @@ import (
 	"net"
 	"fmt"
 	"encoding/binary"
+	"strings"
+	"path"
 
 	hdfs "github.com/openfs/openfs-hdfs/internal/protocol/hadoop_hdfs"
 	"github.com/openfs/openfs-hdfs/internal/opfs"
@@ -16,6 +18,9 @@ func opReadBlock(r *hdfs.OpReadBlockProto) (*hdfs.BlockOpResponseProto, *dataTas
 	header := r.GetHeader().GetBaseHeader()
 	client := r.GetHeader().GetClientName()
 	o := r.GetOffset()
+	if o > defaultChunkSize {
+		panic(fmt.Errorf("offset %v is not off in block but off in file", o))
+	}
 	l := r.GetLen()
 	checkSum := r.GetSendChecksums()
 	cache := r.GetCachingStrategy()
@@ -24,11 +29,17 @@ func opReadBlock(r *hdfs.OpReadBlockProto) (*hdfs.BlockOpResponseProto, *dataTas
 			block, client, o, l, checkSum, cache)
 	log.Printf("opReadBlock: poolid %v\nblock id %v\ngs %v\nnum %v\n", block.GetPoolId(), block.GetBlockId(),
 			block.GetGenerationStamp(), block.GetNumBytes())
-	t := dataTask {
-		src: block.GetPoolId(),
-		op: "read",
+	src :=  block.GetPoolId()
+	off := int64(block.GetBlockId() * defaultBlockSize + o - o%defaultChunkSize)
+	if !strings.Contains(src, "/") || src == "/" {
+		off = 0
+		src = path.Join("/", block.GetPoolId(), fmt.Sprintf("%d", block.GetBlockId()))
 	}
-	t.off = int64(block.GetBlockId() * defaultBlockSize + o - o%defaultChunkSize)
+	t := dataTask {
+		src: src,
+		op: "read",
+		off: off,
+	}
 	t.packstart = int64(o - o % defaultChunkSize)
 	t.size = int64((l + defaultChunkSize - 1 + o - o%defaultChunkSize)/defaultChunkSize * defaultChunkSize)
 

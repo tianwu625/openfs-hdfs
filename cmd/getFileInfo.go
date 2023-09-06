@@ -28,7 +28,7 @@ func getFileInfoDec(b []byte) (proto.Message, error) {
 
 func getFileInfo(ctx context.Context, m proto.Message) (proto.Message, error) {
 	req := m.(*hdfs.GetFileInfoRequestProto)
-	log.Printf("src %v\n", req.GetSrc())
+	log.Printf("getFileInfo req %v", req)
 	return opfsGetFileInfo(req)
 }
 

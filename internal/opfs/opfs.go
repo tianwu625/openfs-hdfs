@@ -532,6 +532,7 @@ func MakeDirAll(path string, perm os.FileMode) error {
 	return nil
 
 }
+
 type FsInfo struct {
 	Capacity              uint64
         Used                  uint64
@@ -808,3 +809,37 @@ func SetSpaceQuota(src string, e *OpfsQuotaEntry) error {
 	return nil
 }
 
+func MakePath(path string, perm os.FileMode) error {
+	dirs := pathutils.Dir(path)
+	if err := MakeDirAll(dirs, perm); err != nil {
+		return err
+	}
+	if err := createFile(path, perm); err != nil {
+		return err
+	}
+
+	return nil
+}
+
+const (
+	rootDir = "/"
+)
+
+func RemovePath(path string) error {
+	if err := RemoveFile(path); err != nil {
+		return err
+	}
+
+	dirs := pathutils.Dir(path)
+	for dirs != rootDir {
+		if err := RemoveDir(dirs); err != nil {
+			if errors.Is(err, syscall.ENOTEMPTY) {
+				return nil
+			}
+			return err
+		}
+		dirs = pathutils.Dir(dirs)
+	}
+
+	return nil
+}

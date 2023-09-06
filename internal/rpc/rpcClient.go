@@ -5,6 +5,7 @@ import (
 	"log"
 	"net"
 	"encoding/hex"
+	"fmt"
 
 	hadoop "github.com/openfs/openfs-hdfs/internal/protocol/hadoop_common"
 )
@@ -17,6 +18,12 @@ type RpcClient struct {
 	User            string
 	ClientIp        string
 	Conn            net.Conn
+}
+
+func(c *RpcClient) String() string {
+	return fmt.Sprintf("version %v,class %v,auth %v,client id %v,user %v,client ip %v",
+		c.Version, c.RpcVersionClass, c.AuthProtocol, hex.EncodeToString(c.ClientId),
+	        c.User, c.ClientIp)
 }
 
 // A handshake packet:
@@ -59,33 +66,37 @@ func ParseHandshake(conn net.Conn) (*RpcClient, error) {
 		return nil, err
 	}
 
+/*
 	magic := string(rpcheader[:magicLen])
 	version := int(rpcheader[versionPos])
 	rpcVersionClass := int(rpcheader[rpcClassPos])
 	authprotocol := int(rpcheader[authProtoPos])
 	log.Printf("magic %v version %v class %v protocol %v\n", magic, version, rpcVersionClass, authprotocol)
+*/
 	rrh := new(hadoop.RpcRequestHeaderProto)
 	cc := new(hadoop.IpcConnectionContextProto)
 	if err := ReadRPCPacket(conn, rrh, cc); err != nil {
 		log.Printf("rpc request head and connect context fail %v", err)
 		return nil, err
 	}
+	/*
 	log.Printf("rrh kind %v\nrpcOp %v\ncallid %v\nclientid %v\n",
 		rrh.GetRpcKind(), rrh.GetRpcOp(), rrh.GetCallId(),
 		string(hex.EncodeToString(rrh.GetClientId())))
 	log.Printf("cc effect user %v\ncc real user %v\ncc protocol %v\n", cc.GetUserInfo().GetEffectiveUser(),
 		cc.GetUserInfo().GetRealUser(), cc.GetProtocol())
+	*/
 	user := cc.GetUserInfo().GetEffectiveUser()
 	if user == "" {
 		user = cc.GetUserInfo().GetRealUser()
 	}
-	log.Printf("check user %v, addr %v", user, conn.RemoteAddr().String())
+//	log.Printf("check user %v, addr %v", user, conn.RemoteAddr().String())
 	host, _, err := net.SplitHostPort(conn.RemoteAddr().String())
 	if err != nil {
 		log.Printf("splist host port fail %v", err)
 		return nil, err
 	}
-	log.Printf("naddr %v", host)
+//	log.Printf("naddr %v", host)
 	return &RpcClient{
 		Version:         rpcheader[versionPos],
 		RpcVersionClass: rpcheader[rpcClassPos],

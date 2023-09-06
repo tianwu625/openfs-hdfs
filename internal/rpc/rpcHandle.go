@@ -56,7 +56,7 @@ func newContext(client *RpcClient, method string, id int32, m proto.Message) con
 	fields := pm.Descriptor().Fields()
 	for i := 0; i < fields.Len(); i++ {
 		f := fields.Get(i)
-		log.Printf("name %v kind %v value %v", f.Name(), f.Kind(), pm.Get(f))
+		//log.Printf("name %v kind %v value %v", f.Name(), f.Kind(), pm.Get(f))
 		reqInfo.AppendParams(string(f.Name()), pm.Get(f))
 	}
 

@@ -3,6 +3,7 @@ package servernode
 import (
 	"log"
 	"context"
+	"strings"
 	"net"
 
 	"google.golang.org/protobuf/proto"
@@ -10,6 +11,7 @@ import (
 	hdsp "github.com/openfs/openfs-hdfs/internal/protocol/hadoop_server"
 	hdfs "github.com/openfs/openfs-hdfs/internal/protocol/hadoop_hdfs"
 	"github.com/openfs/openfs-hdfs/internal/logger"
+	"github.com/openfs/openfs-hdfs/internal/datanodeMap"
 )
 
 func registerDatanodeDec(b []byte) (proto.Message, error) {
@@ -39,8 +41,8 @@ func registerDatanode(ctx context.Context, m proto.Message) (proto.Message, erro
 }
 
 
-func DatanodeIDProtoToDatanodeID(id *hdfs.DatanodeIDProto) Datanodeid {
-	return Datanodeid {
+func DatanodeIDProtoToDatanodeID(id *hdfs.DatanodeIDProto) datanodeMap.Datanodeid {
+	return datanodeMap.Datanodeid {
 		Ipaddr: id.GetIpAddr(),
 		Hostname: id.GetHostName(),
 		Uuid: id.GetDatanodeUuid(),
@@ -51,8 +53,8 @@ func DatanodeIDProtoToDatanodeID(id *hdfs.DatanodeIDProto) Datanodeid {
 	}
 }
 
-func StorageInfoProtoToStorageInfo(info *hdfs.StorageInfoProto) StorageInfo {
-	return StorageInfo {
+func StorageInfoProtoToStorageInfo(info *hdfs.StorageInfoProto) datanodeMap.StorageInfo {
+	return datanodeMap.StorageInfo {
 		LayoutVersion: info.GetLayoutVersion(),
 		NamespaceId:info.GetNamespceID(),
 		ClusterId:info.GetClusterID(),
@@ -60,23 +62,23 @@ func StorageInfoProtoToStorageInfo(info *hdfs.StorageInfoProto) StorageInfo {
 	}
 }
 
-func BlockKeyProtoToBlockKey(bk *hdfs.BlockKeyProto) *BlockKey {
-	return &BlockKey {
+func BlockKeyProtoToBlockKey(bk *hdfs.BlockKeyProto) *datanodeMap.BlockKey {
+	return &datanodeMap.BlockKey {
 		Keyid: bk.GetKeyId(),
 		ExpiryDate:bk.GetExpiryDate(),
 		KeyBytes:bk.GetKeyBytes(),
 	}
 }
 
-func ExportedBlockKeysProtoToExportedBlockKeys(ebk *hdfs.ExportedBlockKeysProto) ExportBlockKey {
+func ExportedBlockKeysProtoToExportedBlockKeys(ebk *hdfs.ExportedBlockKeysProto) datanodeMap.ExportBlockKey {
 	current := BlockKeyProtoToBlockKey(ebk.GetCurrentKey())
 	allkeys := ebk.GetAllKeys()
-	all := make([]*BlockKey, 0, len(allkeys))
+	all := make([]*datanodeMap.BlockKey, 0, len(allkeys))
 	for _, key := range allkeys {
 		all = append(all, BlockKeyProtoToBlockKey(key))
 	}
 
-	return ExportBlockKey {
+	return datanodeMap.ExportBlockKey {
 		IsBlockTokenEnabled: ebk.GetIsBlockTokenEnabled(),
 		KeyUpdateInterval: ebk.GetKeyUpdateInterval(),
 		TokenLifeTime: ebk.GetTokenLifeTime(),
@@ -85,14 +87,18 @@ func ExportedBlockKeysProtoToExportedBlockKeys(ebk *hdfs.ExportedBlockKeysProto)
 	}
 }
 
-func convertRegisterProtoToDatanode(reg *hdsp.DatanodeRegistrationProto) *Datanode {
-	return &Datanode {
+func convertRegisterProtoToDatanode(reg *hdsp.DatanodeRegistrationProto) *datanodeMap.Datanode {
+	return &datanodeMap.Datanode {
 		Id: DatanodeIDProtoToDatanodeID(reg.GetDatanodeID()),
 		Info: StorageInfoProtoToStorageInfo(reg.GetStorageInfo()),
 		Keys: ExportedBlockKeysProtoToExportedBlockKeys(reg.GetKeys()),
 		SoftVersion: reg.GetSoftwareVersion(),
 	}
 }
+
+const (
+	ipv4Loop = "127.0.0.1"
+)
 
 func getIpAddrFromContext(ctx context.Context) string {
 	reqInfo := logger.GetReqInfo(ctx)
@@ -104,6 +110,14 @@ func getIpAddrFromContext(ctx context.Context) string {
 		return ""
 	}
 	log.Printf("remoteHost %v, host %v", reqInfo.RemoteHost, host)
+	if strings.Contains(host, ":") {
+		if net.ParseIP(host).IsLoopback() {
+			return ipv4Loop
+		}
+		log.Printf("ipv6 address, maybe hadoop not support")
+		return ""
+	}
+
 	return host
 }
 
@@ -116,7 +130,7 @@ func opfsRegisterDatanode(ctx context.Context, r *hdsp.RegisterDatanodeRequestPr
 	if ipAddr != "" {
 		datanode.Id.Ipaddr = ipAddr
 	}
-	datamap := GetGlobalDatanodeMap()
+	datamap := datanodeMap.GetGlobalDatanodeMap()
 	err := datamap.Register(datanode)
 	if err != nil {
 		return nil, err

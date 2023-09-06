@@ -12,6 +12,7 @@ import (
 	reconf "github.com/openfs/openfs-hdfs/internal/reconfig"
 	"github.com/openfs/openfs-hdfs/internal/logger"
 	hc "github.com/openfs/openfs-hdfs/internal/logger/target/console"
+	"github.com/openfs/openfs-hdfs/internal/rpc"
 )
 
 const (
@@ -66,10 +67,47 @@ func getReconfig(core hconf.HadoopConf) (*reconf.ReconfigOnline, error) {
 	return reconf.NewReconfig(conf), nil
 }
 
+func withNetWork(addr, network string) rpc.Option {
+	return func(s *rpc.RpcServer) {
+		s.ServerAddress = addr
+		s.Network = network
+	}
+}
+
+func withMethods(ms *rpc.RpcMethods) rpc.Option {
+	return func(s *rpc.RpcServer) {
+		s.Methods = ms
+	}
+}
+
+func withRpcErrInterface(i rpc.RpcErrInterface) rpc.Option {
+	return func(s *rpc.RpcServer) {
+		s.RpcErrInterface = i
+	}
+}
+
+func withRpcHandshakeAfterInterface(i rpc.RpcHandshakeAfterInterface) rpc.Option {
+	return func(s *rpc.RpcServer) {
+		s.RpcHandshakeAfterInterface = i
+	}
+}
+
+func withRpcProcessBeforeInterface(i rpc.RpcProcessBeforeInterface) rpc.Option {
+	return func(s *rpc.RpcServer) {
+		s.RpcProcessBeforeInterface = i
+	}
+}
+
+func withRpcReplyBeforeInterface(i rpc.RpcReplyBeforeInterface) rpc.Option {
+	return func(s *rpc.RpcServer) {
+		s.RpcReplyBeforeInterface = i
+	}
+}
+
 func startNameIpcServer(core hconf.HadoopConf) {
 	//init meta cache
-	globalMeta = InitAclCache()
-	globalFs = InitFsMeta()
+	globalMeta = initMetaCache()
+	globalFs = initFsMeta()
 	var err error
 	globalIAMSys, err = getIAM(core)
 	if err != nil {
@@ -83,27 +121,22 @@ func startNameIpcServer(core hconf.HadoopConf) {
 	if err != nil {
 		log.Fatal("get namenodeReconf fail:", err)
 	}
-	/*
+	if err := initBlocksMap(core); err != nil {
+		log.Fatal("init block map fail:", err)
+	}
 	port := core.ParseNamenodeIpcPort()
 	if err := checkOpfsOccupy(port); err != nil {
 		log.Fatal("port invalid:", err)
 	}
-	ln, err := net.Listen("tcp", fmt.Sprintf(":%v", port))
-	*/
-	//for test simple olny support defaultport
+	//port = "8021"
 
-	ln, err := net.Listen("tcp", fmt.Sprintf(":%v", defaultNameNodePort))
-	if err != nil {
-		log.Fatal("listen fail:", err)
-	}
-
-	for {
-		conn, err := ln.Accept()
-		if err != nil {
-			log.Fatal("accept fail:", err)
-		}
-		go doNamenodeHandshake(conn)
-	}
+	globalRpcServer := rpc.NewRpcServer(
+		withNetWork(fmt.Sprintf(":%v", port), "tcp"),
+		withMethods(globalrpcMethods),
+		withRpcErrInterface(globalrpcErr),
+		withRpcHandshakeAfterInterface(globalClientProtoAcl),
+	)
+	globalRpcServer.Start()
 }
 
 func startNameInfoServer(addr string) {
