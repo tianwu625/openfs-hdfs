@@ -15,6 +15,7 @@ import (
 	"github.com/openfs/openfs-hdfs/internal/opfs"
 	hdfs "github.com/openfs/openfs-hdfs/internal/protocol/hadoop_hdfs"
 	"google.golang.org/protobuf/proto"
+	"github.com/openfs/openfs-hdfs/internal/fsmeta"
 )
 
 
@@ -184,8 +185,9 @@ func opfsCreateSnapshot(r *hdfs.CreateSnapshotRequestProto) (*hdfs.CreateSnapsho
 	if root != "/" {
 		return nil, errOnlySupportRoot
 	}
+	gfs := fsmeta.GetGlobalFsMeta()
 
-	if !globalFs.GetAllowSnapshot() {
+	if !gfs.GetAllowSnapshot() {
 		return nil, errDisallowSnapshot
 	}
 

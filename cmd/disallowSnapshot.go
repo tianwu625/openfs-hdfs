@@ -4,6 +4,7 @@ import (
 	"context"
 	hdfs "github.com/openfs/openfs-hdfs/internal/protocol/hadoop_hdfs"
 	"google.golang.org/protobuf/proto"
+	"github.com/openfs/openfs-hdfs/internal/fsmeta"
 )
 
 func disallowSnapshotDec(b []byte) (proto.Message, error) {
@@ -28,7 +29,9 @@ func opfsDisallowSnapshot(r *hdfs.DisallowSnapshotRequestProto)(*hdfs.DisallowSn
 		return nil, errOnlySupportRoot
 	}
 
-	if err := globalFs.SetAllowSnapshot(false); err != nil {
+	gfs := fsmeta.GetGlobalFsMeta()
+
+	if err := gfs.SetAllowSnapshot(false); err != nil {
 		return nil, err
 	}
 

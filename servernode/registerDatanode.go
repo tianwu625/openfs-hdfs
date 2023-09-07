@@ -12,6 +12,7 @@ import (
 	hdfs "github.com/openfs/openfs-hdfs/internal/protocol/hadoop_hdfs"
 	"github.com/openfs/openfs-hdfs/internal/logger"
 	"github.com/openfs/openfs-hdfs/internal/datanodeMap"
+	"github.com/openfs/openfs-hdfs/internal/fsmeta"
 )
 
 func registerDatanodeDec(b []byte) (proto.Message, error) {
@@ -135,6 +136,10 @@ func opfsRegisterDatanode(ctx context.Context, r *hdsp.RegisterDatanodeRequestPr
 	if err != nil {
 		return nil, err
 	}
+	//enter safe mode until full report over
+	gfs := fsmeta.GetGlobalFsMeta()
+	gfs.SetMode(fsmeta.ModeSafe)
+	log.Printf("register datanode and enter in safe mode")
 	return &hdsp.RegisterDatanodeResponseProto {
 		Registration: reg,
 	}, nil

@@ -9,6 +9,7 @@ import (
 	"github.com/openfs/openfs-hdfs/internal/rpc"
 	"google.golang.org/protobuf/proto"
 	"github.com/openfs/openfs-hdfs/servernode"
+	"github.com/openfs/openfs-hdfs/internal/fsmeta"
 )
 
 var globalrpcMethods *rpc.RpcMethods
@@ -317,6 +318,8 @@ func (e *errFunc)ErrToException(err error) string {
 		return "org.apache.hadoop.hdfs.protocol.SnapshotException"
 	case errors.Is(err, errDisallowSnapshot):
 		return "org.apache.hadoop.hdfs.protocol.SnapshotException"
+	case errors.Is(err, fsmeta.ErrInSafeMode):
+		return "org.apache.hadoop.hdfs.server.namenode.SafeModeException"
 	default:
 		return err.Error()
 	}
@@ -328,6 +331,8 @@ func (e *errFunc)ErrToMsg(err error) string {
 	switch {
 	case errors.Is(err, errOnlySupportRoot):
 		return "openfs hdfs snapshot only support operate root directory"
+	case errors.Is(err, fsmeta.ErrInSafeMode):
+		return "Name node is in safe mode"
 	case errors.Is(err, errDisallowSnapshot):
 		return  err.Error()
 	default:

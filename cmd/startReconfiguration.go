@@ -25,7 +25,8 @@ func opfsStartReconfiguration(r *hdfs.StartReconfigurationRequestProto) (*hdfs.S
 	if err != nil {
 		return nil, err
 	}
-	err = globalReconfig.StartUpdateConf(conf)
+	grf := getGlobalReconfig()
+	err = grf.StartUpdateConf(conf)
 	if err != nil {
 		return nil, err
 	}

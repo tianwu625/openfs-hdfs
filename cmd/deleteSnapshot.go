@@ -8,6 +8,7 @@ import (
 	"github.com/openfs/openfs-hdfs/internal/opfs"
 	hdfs "github.com/openfs/openfs-hdfs/internal/protocol/hadoop_hdfs"
 	"google.golang.org/protobuf/proto"
+	"github.com/openfs/openfs-hdfs/internal/fsmeta"
 )
 
 
@@ -69,8 +70,9 @@ func opfsDeleteSnapshot(r *hdfs.DeleteSnapshotRequestProto) (*hdfs.DeleteSnapsho
 	if root != "/" {
 		return nil, errOnlySupportRoot
 	}
+	gfs := fsmeta.GetGlobalFsMeta()
 
-	if !globalFs.GetAllowSnapshot() {
+	if !gfs.GetAllowSnapshot() {
 		return nil, errDisallowSnapshot
 	}
 

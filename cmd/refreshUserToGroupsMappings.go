@@ -17,7 +17,8 @@ func refreshUserToGroupsMappings(ctx context.Context,m proto.Message) (proto.Mes
 }
 
 func opfsRefreshUserToGroupsMappings(r *hadoop.RefreshUserToGroupsMappingsRequestProto) (*hadoop.RefreshUserToGroupsMappingsResponseProto, error) {
-	err := globalIAMSys.LoadUsers()
+	giam := getGlobalIAM()
+	err := giam.LoadUsers()
 	if err != nil {
 		return nil, err
 	}

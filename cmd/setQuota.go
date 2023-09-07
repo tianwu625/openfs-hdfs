@@ -52,8 +52,9 @@ func opfsSetNamespaceQuota(src string, setQuota bool, nsQuota uint64) error {
 		SetQuota: setQuota,
 		Quota: nsQuota,
 	}
+	gmetas := getGlobalMeta()
 
-	return globalMeta.SetNamespaceQuota(src, quota)
+	return gmetas.SetNamespaceQuota(src, quota)
 }
 
 var errNotSupportStorageType error = errors.New("openfs only support disk type for now")

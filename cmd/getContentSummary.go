@@ -128,7 +128,8 @@ func opfsGetQuota(src string) (*hdfsQuotaEntry, error) {
 	if err != nil && !errors.Is(err, io.EOF){
 		return nil, err
 	}
-	quota, err := globalMeta.GetNamespaceQuota(src)
+	gmetas := getGlobalMeta()
+	quota, err := gmetas.GetNamespaceQuota(src)
 	if err != nil {
 		return nil, err
 	}

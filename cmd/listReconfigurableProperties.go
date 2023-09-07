@@ -17,7 +17,8 @@ func listReconfiguableProperties(ctx context.Context,m proto.Message) (proto.Mes
 }
 
 func opfsListReconfigurableProperties(r *hdfs.ListReconfigurablePropertiesRequestProto) (*hdfs.ListReconfigurablePropertiesResponseProto, error) {
-	properties := globalReconfig.ListProperties()
+	grf := getGlobalReconfig()
+	properties := grf.ListProperties()
 
 	return &hdfs.ListReconfigurablePropertiesResponseProto {
 		Name: properties,

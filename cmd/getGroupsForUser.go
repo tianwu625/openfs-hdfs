@@ -21,8 +21,8 @@ func getGroupsForUser(ctx context.Context, m proto.Message) (proto.Message, erro
 
 func opfsGetGroupsForUser(r *hadoop.GetGroupsForUserRequestProto) (*hadoop.GetGroupsForUserResponseProto, error) {
 	user := r.GetUser()
-
-	groups, err := globalIAMSys.GetGroupsByUser(user)
+	giams := getGlobalIAM()
+	groups, err := giams.GetGroupsByUser(user)
 	if err != nil {
 		return nil, err
 	}

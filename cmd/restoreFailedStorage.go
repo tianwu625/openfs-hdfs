@@ -7,6 +7,7 @@ import (
 
 	hdfs "github.com/openfs/openfs-hdfs/internal/protocol/hadoop_hdfs"
 	"google.golang.org/protobuf/proto"
+	"github.com/openfs/openfs-hdfs/internal/fsmeta"
 )
 
 func restoreFailedStorageDec(b []byte) (proto.Message, error) {
@@ -24,20 +25,23 @@ func opfsRestoreFailedStorage(r *hdfs.RestoreFailedStorageRequestProto) (*hdfs.R
 	args := r.GetArg()
 	log.Printf("args %v\n",args)
 
-	v := onValue
+	v := fsmeta.OnValue
+	onValue := fsmeta.OnValue
+	offValue := fsmeta.OffValue
+	gfs := fsmeta.GetGlobalFsMeta()
 	switch args {
 	case "true":
-		if err := globalFs.SetRestoreFailedStorage(onValue); err != nil {
+		if err := gfs.SetRestoreFailedStorage(onValue); err != nil {
 			return nil, err
 		}
-		v = globalFs.GetRestoreFailedStorage()
+		v = gfs.GetRestoreFailedStorage()
 	case "false":
-		if err := globalFs.SetRestoreFailedStorage(offValue); err != nil {
+		if err := gfs.SetRestoreFailedStorage(offValue); err != nil {
 			return nil, err
 		}
-		v = globalFs.GetRestoreFailedStorage()
+		v = gfs.GetRestoreFailedStorage()
 	case "check":
-		v = globalFs.GetRestoreFailedStorage()
+		v = gfs.GetRestoreFailedStorage()
 	default:
 		panic(fmt.Errorf("not support args %v", args))
 	}

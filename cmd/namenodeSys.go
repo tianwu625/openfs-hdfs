@@ -4,11 +4,14 @@ import (
 	"log"
 	"net"
 	"fmt"
+	"context"
 
 	hconf "github.com/openfs/openfs-hdfs/hadoopconf"
 	iam "github.com/openfs/openfs-hdfs/internal/iam"
 	reconf "github.com/openfs/openfs-hdfs/internal/reconfig"
 	"github.com/openfs/openfs-hdfs/internal/rpc"
+	"google.golang.org/protobuf/proto"
+	"github.com/openfs/openfs-hdfs/internal/fsmeta"
 )
 
 type namenodeConf struct {
@@ -40,11 +43,14 @@ func NewNamenodeConf(core hconf.HadoopConf) (*namenodeConf, error) {
 
 type namenodeSys struct {
 	cf *namenodeConf
-	fs *opfsHdfsFs
+	fs *fsmeta.OpfsHdfsFs
 	mc *opfsMetaCache
 	sac *serviceAclConf
 	ims *iam.IAMSys
 	rc *reconf.ReconfigOnline
+	handshakeafters []rpc.RpcHandshakeAfterInterface
+	processbefores []rpc.RpcProcessBeforeInterface
+	replybefores []rpc.RpcReplyBeforeInterface
 }
 
 func (sys *namenodeSys) startNamenodeInfoServer() {
@@ -84,12 +90,59 @@ func (sys *namenodeSys) startNamenodeSecurityInfoServer() {
 func (sys *namenodeSys) startNamenodeIpcServer() {
 	port := sys.cf.ipcPort
 	globalRpcServer := rpc.NewRpcServer(
-		withNetWork(fmt.Sprintf(":%v", port), "tcp"),
-		withMethods(globalrpcMethods),
-		withRpcErrInterface(globalrpcErr),
-		withRpcHandshakeAfterInterface(sys.sac),
+		rpc.RpcServerOptionWithNetWork(fmt.Sprintf(":%v", port), "tcp"),
+		rpc.RpcServerOptionWithMethods(globalrpcMethods),
+		rpc.RpcServerOptionWithRpcErrInterface(globalrpcErr),
+		rpc.RpcServerOptionWithRpcHandshakeAfterInterface(sys),
+		rpc.RpcServerOptionWithRpcProcessBeforeInterface(sys),
+		rpc.RpcServerOptionWithRpcReplyBeforeInterface(sys),
 	)
 	globalRpcServer.Start()
+}
+
+func (sys *namenodeSys) registerHandshakeafters(hand rpc.RpcHandshakeAfterInterface) error {
+	sys.handshakeafters = append(sys.handshakeafters, hand)
+	return nil
+}
+
+func (sys *namenodeSys) registerProcessbefores(hand rpc.RpcProcessBeforeInterface) error {
+	sys.processbefores = append(sys.processbefores, hand)
+	return nil
+}
+
+func (sys *namenodeSys) registerReplybefores(hand rpc.RpcReplyBeforeInterface) error {
+	sys.replybefores = append(sys.replybefores, hand)
+	return nil
+}
+
+func (sys *namenodeSys) HandshakeAfter(client *rpc.RpcClient) error {
+	for _, hand := range sys.handshakeafters {
+		if err := hand.HandshakeAfter(client); err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
+func (sys *namenodeSys) ProcessBefore(client *rpc.RpcClient, ctx context.Context, m proto.Message) error {
+	for _, hand := range sys.processbefores {
+		if err := hand.ProcessBefore(client, ctx, m); err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
+func (sys *namenodeSys) ReplyBefore(client *rpc.RpcClient, ctx context.Context, req proto.Message, resp proto.Message, status error) error {
+	for _, hand := range sys.replybefores {
+		if err := hand.ReplyBefore(client, ctx, req, resp, status); err != nil {
+			return err
+		}
+	}
+
+	return nil
 }
 
 
@@ -100,28 +153,54 @@ func (sys *namenodeSys) Start() {
 }
 
 func NewNamenodeSys(core hconf.HadoopConf) *namenodeSys {
-	cf, err := NewNamenodeConf(core)
-	if err != nil {
-		return nil
-	}
-	sac, err := getClientProtoAcl(core)
-	if err != nil {
-		return nil
-	}
-	ims, err := getIAM(core)
-	if err != nil {
-		return nil
-	}
-	rc, err := getReconfig(core)
-	if err != nil {
-		return nil
-	}
-	return &namenodeSys {
-		cf: cf,
-		fs: initFsMeta(),
+	sys := &namenodeSys {
+		fs: fsmeta.InitFsMeta(),
 		mc: initMetaCache(),
-		sac: sac,
-		ims: ims,
-		rc: rc,
+		handshakeafters: make([]rpc.RpcHandshakeAfterInterface, 0),
+		processbefores: make([]rpc.RpcProcessBeforeInterface, 0),
+		replybefores: make([]rpc.RpcReplyBeforeInterface, 0),
 	}
+	if err := sys.registerProcessbefores(sys.fs); err != nil {
+		return nil
+	}
+	var err error
+	sys.cf, err = NewNamenodeConf(core)
+	if err != nil {
+		return nil
+	}
+	sys.sac, err = getClientProtoAcl(core)
+	if err != nil {
+		return nil
+	}
+	err = sys.registerHandshakeafters(sys.sac)
+	if err != nil {
+		return nil
+	}
+	sys.ims, err = getIAM(core)
+	if err != nil {
+		return nil
+	}
+	sys.rc, err = getReconfig(core)
+	if err != nil {
+		return nil
+	}
+	return sys
+}
+
+var globalnamenodeSys *namenodeSys
+
+func getGlobalMeta() *opfsMetaCache {
+	return globalnamenodeSys.mc
+}
+
+func getGlobalServiceAcl() *serviceAclConf {
+	return globalnamenodeSys.sac
+}
+
+func getGlobalIAM() *iam.IAMSys {
+	return globalnamenodeSys.ims
+}
+
+func getGlobalReconfig() *reconf.ReconfigOnline {
+	return globalnamenodeSys.rc
 }

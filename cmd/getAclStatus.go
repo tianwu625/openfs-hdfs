@@ -256,7 +256,8 @@ func opfsGetPermWithAcl(src string) (uint32, bool, error) {
 	fi, _ := getOpfsFileInfo(src)
 	allPerm := uint32(fi.Mode().Perm())
 	setAcl := false
-	acl, err := globalMeta.GetAcl(src)
+	gmetas := getGlobalMeta()
+	acl, err := gmetas.GetAcl(src)
 	if err != nil {
 		return allPerm, setAcl, err
 	}
@@ -269,8 +270,8 @@ func opfsGetPermWithAcl(src string) (uint32, bool, error) {
 
 func opfsGetAclStatus(r *hdfs.GetAclStatusRequestProto) (*hdfs.GetAclStatusResponseProto, error) {
 	src := r.GetSrc()
-
-	acl, err := globalMeta.GetAcl(src)
+	gmetas := getGlobalMeta()
+	acl, err := gmetas.GetAcl(src)
 	if err != nil {
 		log.Printf("get acl from cache fail")
 		return nil,err

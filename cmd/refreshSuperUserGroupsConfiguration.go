@@ -25,8 +25,8 @@ func opfsRefreshSuperUserGroupsConfiguration(r *hadoop.RefreshSuperUserGroupsCon
 	if err != nil {
 		return nil, err
 	}
-
-	if err := globalIAMSys.ReloadRootGroups(groups); err != nil {
+	giam := getGlobalIAM()
+	if err := giam.ReloadRootGroups(groups); err != nil {
 		return nil, err
 	}
 

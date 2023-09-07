@@ -21,9 +21,10 @@ func opfsRefreshServiceAcl(r *hadoop.RefreshServiceAclRequestProto) (*hadoop.Ref
 	if err != nil {
 		return nil, err
 	}
+	gsac := getGlobalServiceAcl()
 	set := core.ParseEnableProtoAcl()
 	if !set {
-		globalClientProtoAcl.Set(set, nil)
+		gsac.Set(set, nil)
 		return &hadoop.RefreshServiceAclResponseProto{}, nil
 	}
 	conf, err := globalConfEnv.ReloadServiceAcl()
@@ -34,7 +35,7 @@ func opfsRefreshServiceAcl(r *hadoop.RefreshServiceAclRequestProto) (*hadoop.Ref
 	if err != nil {
 		return nil, err
 	}
-	globalClientProtoAcl.Set(set, scacl)
+	gsac.Set(set, scacl)
 
 	return &hadoop.RefreshServiceAclResponseProto{}, nil
 }

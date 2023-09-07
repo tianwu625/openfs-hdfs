@@ -19,7 +19,8 @@ func getReconfigurationStatus(ctx context.Context,m proto.Message) (proto.Messag
 }
 
 func opfsGetReconfigurationStatus(r *hdfs.GetReconfigurationStatusRequestProto)(*hdfs.GetReconfigurationStatusResponseProto, error) {
-	e := globalReconfig.GetStatus()
+	grf := getGlobalReconfig()
+	e := grf.GetStatus()
 	log.Printf("event e %v", e)
 	start := int64(0)
 	if !e.Start.Equal(time.Unix(0,0)) {

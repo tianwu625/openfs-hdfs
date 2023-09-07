@@ -21,6 +21,7 @@ import (
 	"unsafe"
 	"log"
 	pathutils "path"
+	"io"
 )
 
 type opfsCroot struct {
@@ -842,4 +843,19 @@ func RemovePath(path string) error {
 	}
 
 	return nil
+}
+
+func ReadAll(src string) ([]byte, error) {
+	f, err := Open(src)
+	if err != nil {
+		log.Printf("src %v err %v", src, err)
+		return []byte{}, err
+	}
+	defer f.Close()
+	b, err := io.ReadAll(f)
+	if err != nil {
+		return []byte{}, err
+	}
+
+	return b, nil
 }

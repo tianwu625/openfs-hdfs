@@ -148,7 +148,7 @@ func (s *RpcServer)handleRpc(client *RpcClient) {
 			logger.LogIf(ctx, fmt.Errorf("call process fail %v", err))
 		}
 	sendReply:
-		if s.RpcReplyBeforeInterface != nil {
+		if err == nil && s.RpcReplyBeforeInterface != nil {
 			err = s.ReplyBefore(client, ctx, m, r, err)
 			if err != nil {
 				logger.LogIf(ctx, fmt.Errorf("user define reply before fail %v", err))
@@ -216,6 +216,43 @@ func (s *RpcServer) Start() {
 }
 
 type Option func(*RpcServer)
+
+func RpcServerOptionWithNetWork(addr, network string) Option {
+	return func(s *RpcServer) {
+		s.ServerAddress = addr
+		s.Network = network
+	}
+}
+
+func RpcServerOptionWithMethods(ms *RpcMethods) Option {
+	return func(s *RpcServer) {
+		s.Methods = ms
+	}
+}
+
+func RpcServerOptionWithRpcErrInterface(i RpcErrInterface) Option {
+	return func(s *RpcServer) {
+		s.RpcErrInterface = i
+	}
+}
+
+func RpcServerOptionWithRpcHandshakeAfterInterface(i RpcHandshakeAfterInterface) Option {
+	return func(s *RpcServer) {
+		s.RpcHandshakeAfterInterface = i
+	}
+}
+
+func RpcServerOptionWithRpcProcessBeforeInterface(i RpcProcessBeforeInterface) Option {
+	return func(s *RpcServer) {
+		s.RpcProcessBeforeInterface = i
+	}
+}
+
+func RpcServerOptionWithRpcReplyBeforeInterface(i RpcReplyBeforeInterface) Option {
+	return func(s *RpcServer) {
+		s.RpcReplyBeforeInterface = i
+	}
+}
 
 func NewRpcServer(options ...Option) *RpcServer {
 	s := &RpcServer{

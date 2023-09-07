@@ -7,6 +7,7 @@ import (
 	hdsp "github.com/openfs/openfs-hdfs/internal/protocol/hadoop_server"
 	"google.golang.org/protobuf/proto"
 	"github.com/openfs/openfs-hdfs/internal/rpc"
+	"github.com/openfs/openfs-hdfs/internal/fsmeta"
 )
 
 func blockReportDec(b []byte) (proto.Message, error) {
@@ -41,6 +42,10 @@ func opfsBlockReport(r *hdsp.BlockReportRequestProto) (*hdsp.BlockReportResponse
 			CmdType:hdsp.DatanodeCommandProto_FinalizeCommand.Enum(),
 			FinalizeCmd: cmd,
 		}
+		//maybe need to different to process case
+		gfs := fsmeta.GetGlobalFsMeta()
+		gfs.SetMode(fsmeta.ModeNormal)
+		log.Printf("leave safe mode!!!")
 	}
 	return &hdsp.BlockReportResponseProto{
 		Cmd: datanodeCmd,

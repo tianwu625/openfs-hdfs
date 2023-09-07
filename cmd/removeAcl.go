@@ -28,8 +28,9 @@ func opfsRemoveAcl(r *hdfs.RemoveAclRequestProto) (*hdfs.RemoveAclResponseProto,
 		log.Printf("fail to setAcl %v", err)
 		return nil, err
 	}
+	gmetas := getGlobalMeta()
 	acl := opfsHdfsAcl{}
-	if err := globalMeta.SetAcl(src, acl); err != nil {
+	if err := gmetas.SetAcl(src, acl); err != nil {
 		return nil, err
 	}
 

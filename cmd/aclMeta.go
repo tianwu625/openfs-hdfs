@@ -337,7 +337,3 @@ func initMetaCache() *opfsMetaCache {
 		metas: make(map[string]*opfsMetaCacheEntry),
 	}
 }
-
-func getGlobalMeta() *opfsMetaCache {
-	return globalMeta
-}
