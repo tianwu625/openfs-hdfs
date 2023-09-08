@@ -31,19 +31,19 @@ func opfsSetSafeMode(r *hdfs.SetSafeModeRequestProto) (*hdfs.SetSafeModeResponse
 	modeNormal := fsmeta.ModeNormal
 	modeSafe := fsmeta.ModeSafe
 	mode := modeNormal
-	gfs := fsmeta.GetGlobalFsMeta()
+	gsmm := getGlobalSafeModeManager()
 	switch action.String() {
 	case hdfs.SafeModeActionProto_SAFEMODE_LEAVE.String():
-		gfs.SetMode(modeNormal)
-		mode = gfs.GetMode()
+		gsmm.SetMode(modeNormal, 0)
+		mode = gsmm.GetMode()
 	case hdfs.SafeModeActionProto_SAFEMODE_ENTER.String():
-		gfs.SetMode(modeSafe)
-		mode = gfs.GetMode()
+		gsmm.SetMode(modeSafe, fsmeta.DenyFsWrite)
+		mode = gsmm.GetMode()
 	case hdfs.SafeModeActionProto_SAFEMODE_GET.String():
-		mode = gfs.GetMode()
+		mode = gsmm.GetMode()
 	case hdfs.SafeModeActionProto_SAFEMODE_FORCE_EXIT.String():
-		gfs.SetMode(modeNormal)
-		mode = gfs.GetMode()
+		gsmm.SetMode(modeNormal, 0)
+		mode = gsmm.GetMode()
 
 	default:
 		panic(fmt.Errorf("not support action %v", action.String()))

@@ -19,15 +19,7 @@ func parseRequest(b []byte, req proto.Message) (proto.Message, error) {
 	return rpc.ParseRequest(b, req)
 }
 
-var RpcClientNamenodeProtoV1 map[string]rpc.RpcMethod = map[string]rpc.RpcMethod{
-	"getFileInfo": rpc.RpcMethod{
-		Dec:  getFileInfoDec,
-		Call: getFileInfo,
-	},
-	"getListing": rpc.RpcMethod{
-		Dec:  getListingDec,
-		Call: getListing,
-	},
+var RpcClientNamenodeFsWriteProtoV1 rpc.RpcMap = rpc.RpcMap {
 	"delete": rpc.RpcMethod{
 		Dec:  deleteFileDec,
 		Call: deleteFile,
@@ -56,18 +48,6 @@ var RpcClientNamenodeProtoV1 map[string]rpc.RpcMethod = map[string]rpc.RpcMethod
 		Dec:  truncateDec,
 		Call: truncate,
 	},
-	"getFsStats": rpc.RpcMethod{
-		Dec:  getFsStatsDec,
-		Call: getFsStats,
-	},
-	"getBlockLocations": rpc.RpcMethod{
-		Dec:  getBlockLocationsDec,
-		Call: getBlockLocations,
-	},
-	"getServerDefaults": rpc.RpcMethod{
-		Dec:  getServerDefaultsDec,
-		Call: getServerDefaults,
-	},
 	"create": rpc.RpcMethod{
 		Dec:  createDec,
 		Call: create,
@@ -88,10 +68,6 @@ var RpcClientNamenodeProtoV1 map[string]rpc.RpcMethod = map[string]rpc.RpcMethod
 		Dec:  renameDec,
 		Call: rename,
 	},
-	"renewLease": rpc.RpcMethod{
-		Dec:  renewLeaseDec,
-		Call: renewLease,
-	},
 	"append": rpc.RpcMethod{
 		Dec:  appendFileDec,
 		Call: appendFile,
@@ -104,21 +80,9 @@ var RpcClientNamenodeProtoV1 map[string]rpc.RpcMethod = map[string]rpc.RpcMethod
 		Dec:  concatFileDec,
 		Call: concatFile,
 	},
-	"getContentSummary": rpc.RpcMethod{
-		Dec:  getContentSummaryDec,
-		Call: getContentSummary,
-	},
-	"listEncryptionZones": rpc.RpcMethod{
-		Dec:  listEncryptionZonesDec,
-		Call: listEncryptionZones,
-	},
 	"modifyAclEntries": rpc.RpcMethod{
 		Dec:  modifyAclEntriesDec,
 		Call: modifyAclEntries,
-	},
-	"getAclStatus": rpc.RpcMethod{
-		Dec:  getAclStatusDec,
-		Call: getAclStatus,
 	},
 	"removeAcl": rpc.RpcMethod{
 		Dec:  removeAclDec,
@@ -132,10 +96,6 @@ var RpcClientNamenodeProtoV1 map[string]rpc.RpcMethod = map[string]rpc.RpcMethod
 		Dec:  setAclDec,
 		Call: setAcl,
 	},
-	"getXAttrs": rpc.RpcMethod{
-		Dec:  getXAttrsDec,
-		Call: getXAttrs,
-	},
 	"setXAttr": rpc.RpcMethod{
 		Dec:  setXAttrDec,
 		Call: setXAttr,
@@ -148,9 +108,56 @@ var RpcClientNamenodeProtoV1 map[string]rpc.RpcMethod = map[string]rpc.RpcMethod
 		Dec:  setReplicationDec,
 		Call: setReplication,
 	},
-	"setSafeMode": rpc.RpcMethod{
-		Dec:  setSafeModeDec,
-		Call: setSafeMode,
+	"createSnapshot": rpc.RpcMethod {
+		Dec: createSnapshotDec,
+		Call: createSnapshot,
+	},
+	"deleteSnapshot": rpc.RpcMethod {
+		Dec: deleteSnapshotDec,
+		Call: deleteSnapshot,
+	},
+	"renameSnapshot": rpc.RpcMethod {
+		Dec: renameSnapshotDec,
+		Call: renameSnapshot,
+	},
+	"abandonBlock": rpc.RpcMethod {
+		Dec: abandonBlockDec,
+		Call: abandonBlock,
+	},
+}
+
+var RpcClientNamenodeFsReadProtoV1 rpc.RpcMap = rpc.RpcMap {
+	"getFileInfo": rpc.RpcMethod{
+		Dec:  getFileInfoDec,
+		Call: getFileInfo,
+	},
+	"getListing": rpc.RpcMethod{
+		Dec:  getListingDec,
+		Call: getListing,
+	},
+	"getFsStats": rpc.RpcMethod{
+		Dec:  getFsStatsDec,
+		Call: getFsStats,
+	},
+	"getBlockLocations": rpc.RpcMethod{
+		Dec:  getBlockLocationsDec,
+		Call: getBlockLocations,
+	},
+	"getServerDefaults": rpc.RpcMethod{
+		Dec:  getServerDefaultsDec,
+		Call: getServerDefaults,
+	},
+	"getContentSummary": rpc.RpcMethod{
+		Dec:  getContentSummaryDec,
+		Call: getContentSummary,
+	},
+	"getAclStatus": rpc.RpcMethod{
+		Dec:  getAclStatusDec,
+		Call: getAclStatus,
+	},
+	"getXAttrs": rpc.RpcMethod{
+		Dec:  getXAttrsDec,
+		Call: getXAttrs,
 	},
 	"getFsReplicatedBlockStats": rpc.RpcMethod{
 		Dec:  getFsReplicatedBlockStatsDec,
@@ -159,6 +166,21 @@ var RpcClientNamenodeProtoV1 map[string]rpc.RpcMethod = map[string]rpc.RpcMethod
 	"getFsECBlockGroupStats": rpc.RpcMethod{
 		Dec:  getFsECBlockGroupStatsDec,
 		Call: getFsECBlockGroupStats,
+	},
+}
+
+var RpcClientNamenodeFsManageProtoV1 rpc.RpcMap = rpc.RpcMap {
+	"renewLease": rpc.RpcMethod{
+		Dec:  renewLeaseDec,
+		Call: renewLease,
+	},
+	"listEncryptionZones": rpc.RpcMethod{
+		Dec:  listEncryptionZonesDec,
+		Call: listEncryptionZones,
+	},
+	"setSafeMode": rpc.RpcMethod{
+		Dec:  setSafeModeDec,
+		Call: setSafeMode,
 	},
 	"getDatanodeReport": rpc.RpcMethod{
 		Dec:  getDatanodeReportDec,
@@ -248,22 +270,6 @@ var RpcClientNamenodeProtoV1 map[string]rpc.RpcMethod = map[string]rpc.RpcMethod
 		Dec: listOpenFilesDec,
 		Call: listOpenFiles,
 	},
-	"createSnapshot": rpc.RpcMethod {
-		Dec: createSnapshotDec,
-		Call: createSnapshot,
-	},
-	"deleteSnapshot": rpc.RpcMethod {
-		Dec: deleteSnapshotDec,
-		Call: deleteSnapshot,
-	},
-	"renameSnapshot": rpc.RpcMethod {
-		Dec: renameSnapshotDec,
-		Call: renameSnapshot,
-	},
-	"setQuota": rpc.RpcMethod {
-		Dec: setQuotaDec,
-		Call: setQuota,
-	},
 	"getSnapshottableDirListing": rpc.RpcMethod {
 		Dec: getSnapshottableDirListingDec,
 		Call: getSnapshottableDirListing,
@@ -272,15 +278,20 @@ var RpcClientNamenodeProtoV1 map[string]rpc.RpcMethod = map[string]rpc.RpcMethod
 		Dec: rollingUpgradeDec,
 		Call: rollingUpgrade,
 	},
-	"abandonBlock": rpc.RpcMethod {
-		Dec: abandonBlockDec,
-		Call: abandonBlock,
+	"setQuota": rpc.RpcMethod {
+		Dec: setQuotaDec,
+		Call: setQuota,
 	},
 }
 
+var RpcClientNamenodeProtoV1 rpc.RpcMap = rpc.NewRpcMap()
+
 func init() {
 	globalrpcMethods = rpc.NewRpcMethods()
-	globalrpcMethods.Register(RpcClientNamenodeProtoV1)
+	RpcClientNamenodeProtoV1.Merge(RpcClientNamenodeFsWriteProtoV1)
+	RpcClientNamenodeProtoV1.Merge(RpcClientNamenodeFsReadProtoV1)
+	RpcClientNamenodeProtoV1.Merge(RpcClientNamenodeFsManageProtoV1)
+	globalrpcMethods.Register(map[string]rpc.RpcMethod(RpcClientNamenodeProtoV1))
 	globalrpcMethods.Register(servernode.RpcDataServerProtoV1)
 	globalrpcErr = &errFunc{}
 	log.Printf("namenode rpc methods len %v", globalrpcMethods.GetLen())

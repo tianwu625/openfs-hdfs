@@ -51,6 +51,7 @@ type namenodeSys struct {
 	handshakeafters []rpc.RpcHandshakeAfterInterface
 	processbefores []rpc.RpcProcessBeforeInterface
 	replybefores []rpc.RpcReplyBeforeInterface
+	smm *fsmeta.SafeModeManager
 }
 
 func (sys *namenodeSys) startNamenodeInfoServer() {
@@ -153,6 +154,9 @@ func (sys *namenodeSys) Start() {
 }
 
 func NewNamenodeSys(core hconf.HadoopConf) *namenodeSys {
+	if err := initBlocksMap(core); err != nil {
+		return nil
+	}
 	sys := &namenodeSys {
 		fs: fsmeta.InitFsMeta(),
 		mc: initMetaCache(),
@@ -160,7 +164,13 @@ func NewNamenodeSys(core hconf.HadoopConf) *namenodeSys {
 		processbefores: make([]rpc.RpcProcessBeforeInterface, 0),
 		replybefores: make([]rpc.RpcReplyBeforeInterface, 0),
 	}
-	if err := sys.registerProcessbefores(sys.fs); err != nil {
+	sys.smm = fsmeta.InitSafeModeManager(
+			sys.fs,
+			RpcClientNamenodeFsWriteProtoV1,
+			RpcClientNamenodeFsReadProtoV1,
+			RpcClientNamenodeFsManageProtoV1,
+		)
+	if err := sys.registerProcessbefores(sys.smm); err != nil {
 		return nil
 	}
 	var err error
@@ -203,4 +213,8 @@ func getGlobalIAM() *iam.IAMSys {
 
 func getGlobalReconfig() *reconf.ReconfigOnline {
 	return globalnamenodeSys.rc
+}
+
+func getGlobalSafeModeManager() *fsmeta.SafeModeManager {
+	return globalnamenodeSys.smm
 }

@@ -43,8 +43,8 @@ func opfsBlockReport(r *hdsp.BlockReportRequestProto) (*hdsp.BlockReportResponse
 			FinalizeCmd: cmd,
 		}
 		//maybe need to different to process case
-		gfs := fsmeta.GetGlobalFsMeta()
-		gfs.SetMode(fsmeta.ModeNormal)
+		gssm := fsmeta.GetGlobalSafeModeManager()
+		gssm.SetMode(fsmeta.ModeNormal, 0)
 		log.Printf("leave safe mode!!!")
 	}
 	return &hdsp.BlockReportResponseProto{

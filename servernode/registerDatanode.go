@@ -137,8 +137,8 @@ func opfsRegisterDatanode(ctx context.Context, r *hdsp.RegisterDatanodeRequestPr
 		return nil, err
 	}
 	//enter safe mode until full report over
-	gfs := fsmeta.GetGlobalFsMeta()
-	gfs.SetMode(fsmeta.ModeSafe)
+	gsmm := fsmeta.GetGlobalSafeModeManager()
+	gsmm.SetMode(fsmeta.ModeSafe, fsmeta.DenyFsWrite | fsmeta.DenyFsRead)
 	log.Printf("register datanode and enter in safe mode")
 	return &hdsp.RegisterDatanodeResponseProto {
 		Registration: reg,

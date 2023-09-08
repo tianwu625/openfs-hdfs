@@ -176,7 +176,10 @@ func Main(args []string) {
 	opfs.Init("/")
 	logInit()
 	core := getCoreConf()
-	StartDataNode(core)
 	globalnamenodeSys = NewNamenodeSys(core)
+	if globalnamenodeSys == nil {
+		panic(fmt.Errorf("init namenodeSys fail"))
+	}
+	StartDataNode(core)
 	globalnamenodeSys.Start()
 }
