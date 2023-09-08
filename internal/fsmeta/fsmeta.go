@@ -4,17 +4,13 @@ import (
 	"sync"
 	"path"
 	"os"
-	"context"
-	"errors"
 
 	"github.com/openfs/openfs-hdfs/internal/opfsconfig"
 	"github.com/openfs/openfs-hdfs/internal/opfsconstant"
-	"github.com/openfs/openfs-hdfs/internal/rpc"
-	"google.golang.org/protobuf/proto"
 )
 
 type opfsHdfsFsMeta struct {
-	Mode string `json:"mode, omitempty"`
+	Mode string `json:"-"`
 	RestoreFailedStorage string `json: "restoreFail, omitempty"`
 	AllowSnapshot bool `json: "allowSnapshot, omitempty"`
 }
@@ -108,15 +104,6 @@ func (fs *OpfsHdfsFs) GetAllowSnapshot() bool {
 	return fs.meta.AllowSnapshot
 }
 
-var ErrInSafeMode error = errors.New("file system in safe mode")
-
-func (fs *OpfsHdfsFs) ProcessBefore(client *rpc.RpcClient, ctx context.Context, r proto.Message) error {
-	mode := fs.GetMode()
-	if mode == ModeSafe {
-		return ErrInSafeMode
-	}
-	return nil
-}
 
 func NewHdfsFs() *OpfsHdfsFs {
 	srcFsMeta := path.Join(opfsconstant.HdfsSysDir, hdfsFsMeta)

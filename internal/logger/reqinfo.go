@@ -194,3 +194,11 @@ func GetReqInfo(ctx context.Context) *ReqInfo {
 	}
 	return nil
 }
+
+func GetReqMethod(ctx context.Context) string {
+	if ctx != nil {
+		r := GetReqInfo(ctx)
+		return r.Method
+	}
+	return ""
+}

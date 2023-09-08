@@ -56,3 +56,25 @@ func ParseRequest(b []byte, req proto.Message) (proto.Message, error) {
 	}
 	return req, nil
 }
+
+type RpcMap map[string]RpcMethod
+
+func NewRpcMap() RpcMap {
+	return make(RpcMap)
+}
+
+func(m RpcMap) Merge(s RpcMap) {
+	for k, v := range s {
+		m[k] = v
+	}
+}
+
+func(m RpcMap) InKeys(key string) bool {
+	for k := range m {
+		if k == key {
+			return true
+		}
+	}
+
+	return false
+}
