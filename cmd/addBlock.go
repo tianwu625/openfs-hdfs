@@ -20,9 +20,8 @@ func addBlockDec(b []byte) (proto.Message, error) {
 
 func addBlock(ctx context.Context, m proto.Message) (proto.Message, error) {
 	req := m.(*hdfs.AddBlockRequestProto)
-	log.Printf("---------------------------------------------------")
 	log.Printf("src %v\nclient %v\n", req.GetSrc(), req.GetClientName())
-	log.Printf("!!!!!!!!!!!!!Pre %v\nExcludeNodes %v\n", req.GetPrevious(), req.GetExcludeNodes())
+	log.Printf("Pre %v\nExcludeNodes %v\n", req.GetPrevious(), req.GetExcludeNodes())
 	log.Printf("fileid %v\nfavorNodes %v\n", req.GetFileId(), req.GetFavoredNodes())
 	log.Printf("Flags %v\n", req.GetFlags())
 	return opfsAddBlock(req)

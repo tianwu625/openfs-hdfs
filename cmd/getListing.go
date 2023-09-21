@@ -26,7 +26,7 @@ func getListingDec(b []byte) (proto.Message, error) {
 func getListing(ctx context.Context, m proto.Message) (proto.Message, error) {
 	req := m.(*hdfs.GetListingRequestProto)
 	log.Printf("src %v\nstart %v\nlocal%v\n", req.GetSrc(), req.GetStartAfter(), req.GetNeedLocation())
-	return opfsGetListing(req)
+	return opfsGetListing(ctx, req)
 }
 
 func opfsGetLastPos(entries []os.FileInfo, last string) (int, error) {
@@ -82,14 +82,39 @@ func specialProccessReserveDirs(src string, dlist []*hdfs.HdfsFileStatusProto) [
 	return dlist
 }
 
-func opfsGetListing(r *hdfs.GetListingRequestProto) (proto.Message, error) {
+func putInBlockLocations(ctx context.Context, src string, fi os.FileInfo, res *hdfs.HdfsFileStatusProto) error {
+	if path.Base(src) == snapshotDir {
+		return nil
+	}
+	if fi.Mode().IsRegular() {
+		size := fi.Size()
+		blocksproto, err := opfsGetBlocks(src, 0, uint64(size))
+		if err != nil {
+			logger.LogIf(ctx, err)
+		}
+		res.Locations = blocksproto
+	}
+
+	return nil
+}
+/*
+getList resp dirList:{partialListing:{fileType:IS_FILE path:"" length:7 permission:{perm:420} owner:"root" group:"supergroup" modification_time:1694509430070 access_time:1694589622602 block_replication:3 blocksize:134217728 fileId:16389 childrenNum:0 storagePolicy:0 flags:0} remainingEntries:0}, err <nil>
+*/
+func fillResWithFile(res *hdfs.GetListingResponseProto, fi os.FileInfo, src string) {
+	dlist := make([]*hdfs.HdfsFileStatusProto, 0, 1)
+	d := opfsHdfsFileStatus(src, fi, nil)
+	d.Path = []byte("")
+	dlist = append(dlist, d)
+	res.DirList = new(hdfs.DirectoryListingProto)
+	res.DirList.PartialListing = dlist
+	res.DirList.RemainingEntries = proto.Uint32(0)
+}
+
+func opfsGetListing(ctx context.Context, r *hdfs.GetListingRequestProto) (*hdfs.GetListingResponseProto, error) {
 	src := r.GetSrc()
 	last := (string)(r.GetStartAfter())
 	needlocal := r.GetNeedLocation()
 	res := new(hdfs.GetListingResponseProto)
-	if needlocal {
-		return res, errNotSupport
-	}
 
 	readdirSrc := src
 	//process snapshot name is different for hdfs and openfs
@@ -99,10 +124,22 @@ func opfsGetListing(r *hdfs.GetListingRequestProto) (proto.Message, error) {
 
 	f, err := opfs.Open(readdirSrc)
 	if err != nil {
-		log.Printf("open %v fail %v\n", src, err)
+		logger.LogIf(ctx, fmt.Errorf("open %v fail %v\n", src, err))
+		if os.IsNotExist(err) {
+			return res, nil
+		}
 		return res, err
 	}
 	defer f.Close()
+	fi, err := f.Stat()
+	if err != nil {
+		return res, err
+	}
+
+	if !fi.IsDir() {
+		fillResWithFile(res, fi, src)
+		return res, nil
+	}
 
 	entries, err := f.Readdir(-1)
 	if err != nil && !errors.Is(err, io.EOF) {
@@ -119,11 +156,16 @@ func opfsGetListing(r *hdfs.GetListingRequestProto) (proto.Message, error) {
 		}
 		entries = entries[n+1:]
 	}
-	logger.LogIf(nil, fmt.Errorf("test trace info"))
 	res.DirList = new(hdfs.DirectoryListingProto)
 	dlist := make([]*hdfs.HdfsFileStatusProto, 0, len(entries))
 	for _, e := range entries {
 		d := opfsHdfsFileStatus(path.Join(readdirSrc, e.Name()), e, nil)
+		if needlocal {
+			if err := putInBlockLocations(ctx, path.Join(readdirSrc, e.Name()), e, d); err != nil {
+				return nil, err
+			}
+		}
+		log.Printf("src %v, d %v", path.Join(readdirSrc, e.Name()), d)
 		dlist = append(dlist, d)
 	}
 	res.DirList.PartialListing = specialProccessReserveDirs(src, dlist)

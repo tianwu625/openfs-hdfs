@@ -1,0 +1,91 @@
+<configuration>
+    <property>
+        <name>hadoop.security.group.mapping</name>
+	<value>org.apache.hadoop.security.CompositeGroupsMapping</value>
+	<description>
+           Class for user to group mapping (get groups for a given user) for ACL, which
+           makes use of other multiple providers to provide the service.
+        </description>
+    </property>
+
+    <property>
+        <name>hadoop.security.group.mapping.providers</name>
+        <value>openfsAuthService</value>
+        <description>
+           Comma separated of names of other providers to provide user to group mapping.
+           for openfs hdfs, only be openfsAuthService
+        </description>
+    </property>
+
+    <property>
+        <name>hadoop.security.group.mapping.providers.combined</name>
+        <value>true</value>
+        <description>
+           true or false to indicate whether groups from the providers are combined or not. The default value is true
+           If true, then all the providers will be tried to get groups and all the groups are combined to return as
+           the final results. Otherwise, openfs hdfs will fail when start
+        </description>
+    </property>
+
+    <property>
+        <name>hadoop.security.group.mapping.provider.openfsAuthService</name>
+        <value>github.openfs.security.OpenfsGroupsMapping</value>
+        <description>
+           Class for openfs auth service, and openfs hdfs will check the value when start
+        </description>
+    </property>
+
+    <property>
+	<name>dfs.permissions.superusergroup</name>
+	<value>openfs</value>
+    </property>
+
+    <!-- follow attrs belong to hdfs-default.xml -->
+    <property>
+        <name>dfs.namenode.http-address</name>
+        <value>0.0.0.0:50070</value>
+        <description>
+           The address and the base port where the dfs namenode web ui will listen on.
+        </description>
+    </property>
+
+    <property>
+        <name>dfs.namenode.https-address</name>
+        <value>0.0.0.0:50470</value>
+        <description>The namenode secure http server address and port.</description>
+    </property>
+
+    <property>
+        <name>dfs.datanode.https.address</name>
+        <value>0.0.0.0:50475</value>
+        <description>The datanode secure http server address and port.</description>
+    </property>
+
+    <property>
+        <name>dfs.datanode.address</name>
+        <value>0.0.0.0:50010</value>
+        <description>
+             The datanode server address and port for data transfer.
+        </description>
+    </property>
+
+    <property>
+	<name>dfs.datanode.http.address</name>
+	<value>0.0.0.0:50075</value>
+	<description>
+	    The datanode http server address and port.
+	</description>
+    </property>
+
+    <property>
+       <name>dfs.datanode.ipc.address</name>
+       <value>0.0.0.0:50020</value>
+       <description>
+           The datanode ipc server address and port.
+       </description>
+    </property>
+    <property>
+	<name>fs.defaultFS</name>
+	<value>hdfs://localhost:8020</value>
+    </property>	    
+</configuration>

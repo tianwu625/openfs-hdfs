@@ -35,10 +35,6 @@ type dataTask struct {
 	bytesPerCheck uint32
 }
 
-const (
-	defaultBlockSize = 128 * 1024 * 1024 //128 MB
-)
-
 func ProcessData(t *dataTask, conn net.Conn) error {
 	switch t.op {
 	case "read":
@@ -55,7 +51,7 @@ func HandleDataXfer(conn net.Conn) {
 	for {
 		op, m, err := xfer.ReadBlockOpRequest(conn)
 		if err != nil {
-			log.Printf("readfBlockOp err %v\n", err)
+			log.Printf("readfBlockOpRequest err %v\n", err)
 			break
 		}
 		var resp *hdfs.BlockOpResponseProto
@@ -129,6 +125,8 @@ type blockPool struct {
 
 type datanodeConstConf struct {
 	blockSize uint64
+	chunkSize uint64
+	packetSize uint64
 }
 
 type datanodeSys struct {
@@ -384,7 +382,7 @@ func (sys *datanodeSys) getDatanodeId() *hconf.DatanodeId {
 func datanodeIdToProto(id *hconf.DatanodeId, uuid string) *hdfs.DatanodeIDProto{
 	return &hdfs.DatanodeIDProto {
 		IpAddr: proto.String(id.IpAddr),
-		HostName: proto.String(getHostname()),
+		HostName: proto.String(id.Hostname),
 		DatanodeUuid: proto.String(uuid),
 		XferPort: proto.Uint32(id.XferPort),
 		InfoPort: proto.Uint32(id.InfoPort),
@@ -601,6 +599,17 @@ func (sys *datanodeSys) getNamenode() *namenodeRpc {
 	return sys.namenode
 }
 
+func getDatanodeIdFromConfig(core hconf.HadoopConf) *hconf.DatanodeId {
+	res := core.ParseDatanodeId()
+
+	setOpfsServiceIpToDatanodeId(res)
+	if res.Hostname == "" {
+		res.Hostname = getHostname()
+	}
+
+	return res
+}
+
 const (
 	defaultRetry = uint64(1000)
 )
@@ -608,6 +617,8 @@ const (
 func NewDatanodeSys(core hconf.HadoopConf) *datanodeSys {
 	constConf := &datanodeConstConf {
 		blockSize: core.ParseBlockSize(),
+		chunkSize: core.ParseChunkSize(),
+		packetSize: core.ParsePacketSize(),
 	}
 	conf := &datanodeConf {
 		bandwidth: core.ParseDatanodeBandwidth(),
@@ -621,6 +632,11 @@ func NewDatanodeSys(core hconf.HadoopConf) *datanodeSys {
 
 	opt := namenodeRpcOptionsFromConf(core)
 	opt.opts.AlwaysRetry = true
+	//register only localhost
+	opt.opts.Addresses = []string {
+		"localhost:" + core.ParseNamenodeIpcPort(),
+	}
+
 	rpcClient := NewNamenodeRpc(opt)
 	if rpcClient == nil {
 		log.Fatal("newNamenode failed")
@@ -640,7 +656,7 @@ func NewDatanodeSys(core hconf.HadoopConf) *datanodeSys {
 		namenode: rpcClient,
 		done: make(chan struct{}),
 		meta: meta,
-		id: core.ParseDatanodeId(),
+		id: getDatanodeIdFromConfig(core),
 		attrs: &datanodeAttrs {
 			softwareVersion: datanodeSoftWare,
 		},
@@ -659,4 +675,25 @@ func DatanodeInit(core hconf.HadoopConf) error {
 	globalDatanodeSys = NewDatanodeSys(core)
 	globalStartTime = time.Now()
 	return nil
+}
+
+func getDefaultBlockSize() uint64 {
+	if globalDatanodeSys == nil {
+		panic(fmt.Errorf("not init global datanodesys"))
+	}
+	return globalDatanodeSys.constConf.blockSize
+}
+
+func getDefaultChunkSize() uint64 {
+	if globalDatanodeSys == nil {
+		panic(fmt.Errorf("not init global datanodesys"))
+	}
+	return globalDatanodeSys.constConf.chunkSize
+}
+
+func getDefaultPacketSize() uint64 {
+	if globalDatanodeSys == nil {
+		panic(fmt.Errorf("not init global datanodesys"))
+	}
+	return globalDatanodeSys.constConf.packetSize
 }

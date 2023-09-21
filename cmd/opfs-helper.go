@@ -73,7 +73,6 @@ func opfsAclToHdfsAcl(oacls []opfs.AclGrant, isDir bool) ([]opfsHdfsAclEntry, []
 	acls := make([]opfsHdfsAclEntry, 0, len(oacls))
 	dacls := make([]opfsHdfsAclEntry, 0, len(oacls))
 	for _, oa := range oacls {
-		log.Printf("oa %#v", oa)
 		var a *opfsHdfsAclEntry
 		switch oa.Acltype {
 		case opfs.UserType:
@@ -97,10 +96,9 @@ func opfsAclToHdfsAcl(oacls []opfs.AclGrant, isDir bool) ([]opfsHdfsAclEntry, []
 		}
 		perm, err := opfsGetPermBits(opfsRoundBits(oa.Aclbits, isDir), isDir)
 		if err != nil {
-			log.Printf("can't convert to hdfs acl entry, skip this entry and continue")
+			//log.Printf("can't convert to hdfs acl entry, skip this entry and continue")
 			continue
 		}
-		log.Printf("get perm %T, %v", perm, perm)
 		a.AclPerm = perm
 		if oa.Aclflag == opfs.AclFlagDefault{
 			a.AclScope = hdfsScopeAccess
@@ -136,7 +134,7 @@ func opfsGetMask(src string) (uint32,[]opfsHdfsAclEntry, uint32, []opfsHdfsAclEn
 		log.Printf("get acl fail from opfs %v", err)
 		return 0,[]opfsHdfsAclEntry{}, 0, []opfsHdfsAclEntry{}, err
 	}
-	log.Printf("opfs Acls %v", opfsAcls)
+	//log.Printf("opfs Acls %v", opfsAcls)
 	acls, dacls, err := opfsAclToHdfsAcl(opfsAcls, fi.IsDir())
 	if err != nil {
 		log.Printf("convert to hdfsacl fail %v", err)

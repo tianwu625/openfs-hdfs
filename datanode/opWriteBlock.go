@@ -50,7 +50,7 @@ func opWriteBlock(r *hdfs.OpWriteBlockProto) (*hdfs.BlockOpResponseProto, *dataT
 			block.GetGenerationStamp(), block.GetNumBytes())
 	blockSize := globalDatanodeSys.constConf.blockSize
 	src := block.GetPoolId()
-	off := int64(block.GetBlockId() * blockSize)
+	off := int64(block.GetBlockId())
 	if !strings.Contains(src, "/") || src == "/" {
 		off = 0
 		src = path.Join("/", block.GetPoolId(), fmt.Sprintf("%d", block.GetBlockId()))
@@ -273,7 +273,7 @@ func putDataToFile(t *dataTask, conn net.Conn) error {
 		return err
 	}
 	defer f.Close()
-	sum := 0
+	blocksize := 0
 	//testpackages = 0
 	for {
 		//log.Printf("in write data\n")
@@ -287,10 +287,8 @@ func putDataToFile(t *dataTask, conn net.Conn) error {
 				continue
 			}
 		}
-		/*
-		log.Printf("len %v off %v seqno %v last %v err %v\n",
-			len(b), off, seqno, last, err)
-		*/
+		//log.Printf("path %v:\nlen %v off %v seqno %v last %v err %v\n",
+		//	t.src, len(b), off, seqno, last, err)
 		if len(b) != 0 {
 			wsize, err := f.WriteAt(b, off + t.off)
 			/*
@@ -303,13 +301,15 @@ func putDataToFile(t *dataTask, conn net.Conn) error {
 				sentReply(seqno, err, conn)
 				continue
 			}
-			sum += wsize
+			if int(off) + wsize > blocksize {
+				blocksize = int(off) + wsize
+			}
 		}
 		//testpackages++
 		sentReply(seqno, err, conn)
 		if last {
-			log.Printf("all write size %v", sum)
-			go opfsUpdateBlockStatus(t.block, t.storageId, sum, "RECEIVED", "")
+			log.Printf("all write size %v", blocksize)
+			go opfsUpdateBlockStatus(t.block, t.storageId, blocksize, "RECEIVED", "")
 			break
 		}
 	}

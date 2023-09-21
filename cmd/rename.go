@@ -8,6 +8,7 @@ import (
 	"github.com/openfs/openfs-hdfs/internal/opfs"
 	hdfs "github.com/openfs/openfs-hdfs/internal/protocol/hadoop_hdfs"
 	"google.golang.org/protobuf/proto"
+	"github.com/openfs/openfs-hdfs/internal/logger"
 )
 
 func renameDec(b []byte) (proto.Message, error) {
@@ -18,10 +19,10 @@ func renameDec(b []byte) (proto.Message, error) {
 func rename(ctx context.Context, m proto.Message) (proto.Message, error) {
 	req := m.(*hdfs.RenameRequestProto)
 	log.Printf("src %v\ndst %v\n", req.GetSrc(), req.GetDst())
-	return opfsRename(req)
+	return opfsRename(ctx, req)
 }
 
-func opfsRename(r *hdfs.RenameRequestProto) (*hdfs.RenameResponseProto, error) {
+func opfsRename(ctx context.Context, r *hdfs.RenameRequestProto) (*hdfs.RenameResponseProto, error) {
 	res := new(hdfs.RenameResponseProto)
 	res.Result = proto.Bool(false)
 	src := r.GetSrc()
@@ -29,13 +30,18 @@ func opfsRename(r *hdfs.RenameRequestProto) (*hdfs.RenameResponseProto, error) {
 
 	f, err := opfs.Open(dst)
 	if err == nil {
-		defer f.Close()
-		return res, os.ErrExist
+		f.Close()
+		return res, nil
 	} else if err != nil && !os.IsNotExist(err) {
-		return res, err
+		return res, nil
 	}
 
-	if err := renameFile(src, dst); err != nil {
+	if err := renameFile(ctx, src, dst); err != nil {
+		if os.IsNotExist(err) {
+			logger.LogIf(ctx, err)
+			return res, nil
+		}
+		logger.LogIf(ctx, err)
 		return res, err
 	}
 

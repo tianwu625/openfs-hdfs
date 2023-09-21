@@ -18,7 +18,8 @@ func opReadBlock(r *hdfs.OpReadBlockProto) (*hdfs.BlockOpResponseProto, *dataTas
 	header := r.GetHeader().GetBaseHeader()
 	client := r.GetHeader().GetClientName()
 	o := r.GetOffset()
-	if o > defaultChunkSize {
+	defaultBlockSize := getDefaultBlockSize()
+	if o > defaultBlockSize {
 		panic(fmt.Errorf("offset %v is not off in block but off in file", o))
 	}
 	l := r.GetLen()
@@ -30,7 +31,8 @@ func opReadBlock(r *hdfs.OpReadBlockProto) (*hdfs.BlockOpResponseProto, *dataTas
 	log.Printf("opReadBlock: poolid %v\nblock id %v\ngs %v\nnum %v\n", block.GetPoolId(), block.GetBlockId(),
 			block.GetGenerationStamp(), block.GetNumBytes())
 	src :=  block.GetPoolId()
-	off := int64(block.GetBlockId() * defaultBlockSize + o - o%defaultChunkSize)
+	defaultChunkSize := getDefaultChunkSize()
+	off := int64(block.GetBlockId() + o - o%defaultChunkSize)
 	if !strings.Contains(src, "/") || src == "/" {
 		off = 0
 		src = path.Join("/", block.GetPoolId(), fmt.Sprintf("%d", block.GetBlockId()))
@@ -41,7 +43,7 @@ func opReadBlock(r *hdfs.OpReadBlockProto) (*hdfs.BlockOpResponseProto, *dataTas
 		off: off,
 	}
 	t.packstart = int64(o - o % defaultChunkSize)
-	t.size = int64((l + defaultChunkSize - 1 + o - o%defaultChunkSize)/defaultChunkSize * defaultChunkSize)
+	t.size = int64((l + defaultChunkSize - 1 + o%defaultChunkSize)/defaultChunkSize * defaultChunkSize)
 
 	if t.size > int64(block.GetNumBytes() - (o - o%defaultChunkSize)) {
 		t.size = int64(block.GetNumBytes() - (o - o%defaultChunkSize))
@@ -51,7 +53,7 @@ func opReadBlock(r *hdfs.OpReadBlockProto) (*hdfs.BlockOpResponseProto, *dataTas
 	res.ReadOpChecksumInfo = &hdfs.ReadOpChecksumInfoProto {
 		Checksum: &hdfs.ChecksumProto {
 			Type: hdfs.ChecksumTypeProto_CHECKSUM_CRC32C.Enum(),
-			BytesPerChecksum: proto.Uint32(defaultChunkSize),
+			BytesPerChecksum: proto.Uint32(uint32(defaultChunkSize)),
 		},
 		ChunkOffset: proto.Uint64(o - o%defaultChunkSize),
 	}
@@ -99,10 +101,6 @@ func writePacket(r *packetRequest, conn net.Conn) error {
         return nil
 }
 
-const (
-	defaultChunkSize = 512
-)
-
 //pack of data: | pktLen | headLen | pktHeaderProto | chunksum ... | chunk data ...|
 //pktLen : 4 bytes + chunsum all length + chunk data all length, occupy 4 byte
 //headLen: length of pktHeaderProto encode, occupy 2 byte
@@ -119,8 +117,8 @@ func splitPacketsAndSent(b []byte, sum int, per int, start int64, conn net.Conn)
 			pdata = b[poff:poff+per]
 		}
 		checksumArgs := &argsFileInfo {
-			size: int64(len(pdata)),
-			perSize: defaultChunkSize,
+			size: uint64(len(pdata)),
+			perSize: getDefaultChunkSize(),
 			checktype: "CHECKSUM_CRC32C",
 			bdata: pdata,
 		}
@@ -165,11 +163,6 @@ func sendLast(seqno int, conn net.Conn) {
 	}
 }
 
-
-const (
-	defaultPacketSize = 65536 //64KB
-)
-
 func opfsGetData(src string, off int64, b []byte) (int, error) {
 	f, err := opfs.Open(src)
 	if err != nil {
@@ -191,7 +184,7 @@ func getDataFromFile(t *dataTask, conn net.Conn) error {
 	if err != nil || n != len(b) {
 		return fmt.Errorf("fail to read %v, %v, %v", t.src, t.off, t.size)
 	}
-	seq, err := splitPacketsAndSent(b, n, defaultPacketSize, t.packstart, conn)
+	seq, err := splitPacketsAndSent(b, n, int(getDefaultPacketSize()), t.packstart, conn)
 	if err != nil {
 		return err
 	}

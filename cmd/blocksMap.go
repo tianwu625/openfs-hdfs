@@ -3,9 +3,11 @@ package cmd
 import (
 	"sync"
 	"syscall"
+	"fmt"
 
 	hconf "github.com/openfs/openfs-hdfs/hadoopconf"
 	"github.com/openfs/openfs-hdfs/internal/opfsBlocksMap"
+	"github.com/openfs/openfs-hdfs/internal/logger"
 )
 
 type blocksMap struct {
@@ -22,6 +24,7 @@ func(bsm *blocksMap) AppendBlock (filename string, prev *opfsBlocksMap.Blockmap,
 		opfsBlocksMap.AddBlockOptWithExcludes(excludes),
 		)
 	if err != nil {
+		logger.LogIf(nil, fmt.Errorf("!!!!!!!addBlock fail %v", err))
 		return nil, err
 	}
 	return bm, nil

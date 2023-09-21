@@ -160,7 +160,6 @@ func (c *opfsMetaCache) validModifyTime(src string, e *opfsMetaCacheEntry) bool 
 
 func (c *opfsMetaCache) validStayTime(e *opfsMetaCacheEntry) bool {
 	elapse := time.Since(e.StayTime)
-	log.Printf("staytime %v elapse %v", e.StayTime, elapse)
 	if elapse >= DefaultLifeTime * time.Second {
 		return false
 	}
@@ -189,9 +188,7 @@ func (c *opfsMetaCache) UpdateStayTime(src string) {
 	if err != nil {
 		return
 	}
-	log.Printf("update before staytime %v", e.StayTime)
 	e.StayTime = time.Now()
-	log.Printf("update staytime %v", e.StayTime)
 }
 
 func (c *opfsMetaCache) GetAcl(src string) (opfsHdfsAcl, error) {
@@ -221,8 +218,6 @@ func (c *opfsMetaCache) getCacheEntry(src string, withload bool) (*opfsMetaCache
 	if err == nil {
 		return e, nil
 	}
-
-	log.Printf("get valid fail %v", err)
 
 	if withload {
 		return c.loadCacheEntry(src)

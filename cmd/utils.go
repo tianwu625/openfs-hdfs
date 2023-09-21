@@ -9,9 +9,11 @@ import (
 	"bytes"
 	"log"
 	"syscall"
+	"context"
 
 	jsoniter "github.com/json-iterator/go"
 	"github.com/openfs/openfs-hdfs/internal/opfs"
+	"github.com/openfs/openfs-hdfs/internal/logger"
 )
 
 const (
@@ -230,24 +232,21 @@ func renameMeta(src, dst string) error {
 	return gmetas.Rename(src, dst)
 }
 
-func renameFile(src, dst string) error {
-	isDir, err := opfsIsDir(src)
-	if err != nil {
-		return err
-	}
+func renameFile(ctx context.Context, src, dst string) error {
 	// 1. rename openfs file
 	if err := opfs.Rename(src, dst); err != nil {
+		logger.LogIf(ctx, err)
 		return err
 	}
 	// 2. rename meta
 	if err := renameMeta(src, dst); err != nil {
+		logger.LogIf(ctx, err)
 		return err
 	}
 	// 3. rename blocksMap
-	if !isDir {
-		if err := renameBlocksMap(src, dst); err != nil {
-			return err
-		}
+	if err := renameBlocksMap(src, dst); err != nil {
+		logger.LogIf(ctx, err)
+		return err
 	}
 
 	return nil

@@ -5,6 +5,7 @@ import (
 	"os"
 	"math"
 	"context"
+	"fmt"
 
 	"github.com/openfs/openfs-hdfs/internal/opfs"
 	hdfs "github.com/openfs/openfs-hdfs/internal/protocol/hadoop_hdfs"
@@ -73,6 +74,10 @@ func convertDatanodeIdProto(d *datanodeMap.Datanode) *hdfs.DatanodeIDProto {
 	}
 }
 
+const (
+	defaultRack = "/default-rack"
+)
+
 func getDatanodeLocs(b *opfsBlocksMap.Blockmap) ([]*hdfs.DatanodeInfoProto, []hdfs.StorageTypeProto, []string) {
 	log.Printf("b %+v", b)
 	locs := b.L
@@ -91,6 +96,7 @@ func getDatanodeLocs(b *opfsBlocksMap.Blockmap) ([]*hdfs.DatanodeInfoProto, []hd
 		}
 		info := &hdfs.DatanodeInfoProto {
 			Id: convertDatanodeIdProto(d),
+			Location: proto.String(defaultRack),
 		}
 		stype := getStorageType(s.StorageType)
 		infos = append(infos, info)
@@ -145,17 +151,25 @@ func opfsGetBlocks(src string, off uint64, length uint64) (*hdfs.LocatedBlocksPr
 			return nil, err
 		}
 	}
+	blocksProto := &hdfs.LocatedBlocksProto {
+		FileLength: proto.Uint64(uint64(size)),
+		UnderConstruction: proto.Bool(false),
+		Blocks: make([]*hdfs.LocatedBlockProto, 0, len(bs)),
+		IsLastBlockComplete: proto.Bool(true),
+	}
+	if len(bs) == 0 {
+		if size != 0 {
+			panic(fmt.Errorf("file %v size %v but blocks is %v", src, size, bs))
+		}
+		log.Printf("this file %v is zero size", src)
+		return blocksProto, nil
+	}
 	lastb := bs[len(bs) - 1]
 	start, _:= bsm.GetOffIndex(src, off)
 	end, _:= bsm.GetOffIndex(src, off + length - 1)
 	end += 1
 	log.Printf("start %v, end %v", start, end)
 	bs = bs[start:end]
-	blocksProto := &hdfs.LocatedBlocksProto {
-		FileLength: proto.Uint64(uint64(size)),
-		UnderConstruction: proto.Bool(false),
-		Blocks: make([]*hdfs.LocatedBlockProto, 0),
-	}
 	for i, b := range bs {
 		eb := &hdfs.ExtendedBlockProto {
 			PoolId:proto.String(b.B.PoolId),

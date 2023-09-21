@@ -124,6 +124,10 @@ var RpcClientNamenodeFsWriteProtoV1 rpc.RpcMap = rpc.RpcMap {
 		Dec: abandonBlockDec,
 		Call: abandonBlock,
 	},
+	"fsync": rpc.RpcMethod {
+		Dec: fsyncDec,
+		Call: fsync,
+	},
 }
 
 var RpcClientNamenodeFsReadProtoV1 rpc.RpcMap = rpc.RpcMap {
@@ -166,6 +170,10 @@ var RpcClientNamenodeFsReadProtoV1 rpc.RpcMap = rpc.RpcMap {
 	"getFsECBlockGroupStats": rpc.RpcMethod{
 		Dec:  getFsECBlockGroupStatsDec,
 		Call: getFsECBlockGroupStats,
+	},
+	"isFileClosed": rpc.RpcMethod {
+		Dec: isFileClosedDec,
+		Call: isFileClosed,
 	},
 }
 
@@ -281,6 +289,10 @@ var RpcClientNamenodeFsManageProtoV1 rpc.RpcMap = rpc.RpcMap {
 	"setQuota": rpc.RpcMethod {
 		Dec: setQuotaDec,
 		Call: setQuota,
+	},
+	"recoverLease": rpc.RpcMethod {
+		Dec: recoverLeaseDec,
+		Call: recoverLease,
 	},
 }
 
