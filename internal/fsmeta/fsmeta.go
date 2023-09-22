@@ -4,21 +4,103 @@ import (
 	"sync"
 	"path"
 	"os"
+	"time"
+	"net"
+	"math/rand"
+	"fmt"
+	"errors"
+	"strings"
 
+	"github.com/google/uuid"
 	"github.com/openfs/openfs-hdfs/internal/opfsconfig"
 	"github.com/openfs/openfs-hdfs/internal/opfsconstant"
 )
 
-type opfsHdfsFsMeta struct {
+type OpfsHdfsFsMeta struct {
 	Mode string `json:"-"`
 	RestoreFailedStorage string `json: "restoreFail, omitempty"`
 	AllowSnapshot bool `json: "allowSnapshot, omitempty"`
+	NameSpaceID uint32 `json: "namespaceid, omitempty"`
+	ClusterID string `json: "clusterid, omitempty"`
+	Ctime uint64 `json:"ctime, omitempty"`
+	BlockPool string `json: "blockpool, omitempty"`
+	Layout uint32 `json: "layout, omitempty"`
 }
 
 type OpfsHdfsFs struct {
-	meta *opfsHdfsFsMeta
-	*sync.Mutex
+	meta *OpfsHdfsFsMeta
+	*sync.RWMutex
 }
+
+func getRandInt31() int32 {
+	r := rand.New(rand.NewSource(time.Now().UnixNano()))
+	return r.Int31()
+}
+
+func newNameSpaceID() uint32 {
+	return uint32(getRandInt31())
+}
+
+func newClusterID() string {
+	us := ""
+	u, err := uuid.NewRandom()
+	if err != nil {
+		us = "bb6b2ad0-b65d-4057-a081-16fa44ea5026"
+	} else {
+		us = u.String()
+	}
+	return "CID-" + us
+}
+
+func newCtime() uint64 {
+	return uint64(time.Now().UnixMilli())
+}
+
+var errNotIncludeIpv4 error = errors.New("local host not include a ipv4 address")
+
+func getRandIpv4() (string, error) {
+	interfaces, err := net.Interfaces()
+	if err != nil {
+		return "", err
+	}
+
+	for _, i := range interfaces {
+		addrs, err := i.Addrs()
+		if err != nil {
+			continue
+		}
+		for _, addr := range addrs {
+			s := addr.String()
+			if strings.Contains(s, "/") {
+				ip, _, err := net.ParseCIDR(s)
+				if err != nil {
+					continue
+				}
+				if ip.To4() != nil {
+					return ip.String(), nil
+				}
+			} else {
+				continue
+			}
+		}
+	}
+
+	return "", errNotIncludeIpv4
+}
+
+func newBlockPool(ctime uint64) string {
+	ip, err := getRandIpv4()
+	if err != nil {
+		ip = "127.0.0.1"
+	}
+
+	return fmt.Sprintf("%s-%d-%s-%d", "BP", getRandInt31(), ip, ctime)
+}
+
+const (
+	layout335 = uint32(4294967230)
+)
+
 
 var globalFs *OpfsHdfsFs
 
@@ -32,12 +114,18 @@ const (
 	OffValue = "OFF"
 )
 
-func defaultFsMeta() *opfsHdfsFsMeta {
-	return &opfsHdfsFsMeta {
+func defaultFsMeta() *OpfsHdfsFsMeta {
+	meta := &OpfsHdfsFsMeta {
 		Mode: ModeNormal,
 		RestoreFailedStorage: OnValue,
 		AllowSnapshot: false,
+		NameSpaceID: newNameSpaceID(),
+		ClusterID: newClusterID(),
+		Ctime: newCtime(),
+		Layout: layout335,
 	}
+	meta.BlockPool = newBlockPool(meta.Ctime)
+	return meta
 }
 
 func (fs *OpfsHdfsFs) GetMode() string {
@@ -104,10 +192,22 @@ func (fs *OpfsHdfsFs) GetAllowSnapshot() bool {
 	return fs.meta.AllowSnapshot
 }
 
+func (fs *OpfsHdfsFs) GetMeta() *OpfsHdfsFsMeta {
+	fs.RLock()
+	defer fs.RUnlock()
+	return &OpfsHdfsFsMeta {
+		NameSpaceID:fs.meta.NameSpaceID,
+		ClusterID:fs.meta.ClusterID,
+		Ctime:fs.meta.Ctime,
+		BlockPool:fs.meta.BlockPool,
+		Layout:fs.meta.Layout,
+	}
+}
+
 
 func NewHdfsFs() *OpfsHdfsFs {
 	srcFsMeta := path.Join(opfsconstant.HdfsSysDir, hdfsFsMeta)
-	meta := new(opfsHdfsFsMeta)
+	meta := new(OpfsHdfsFsMeta)
 	err := opfsconfig.LoadFromConfig(srcFsMeta, meta)
 	if err != nil {
 		if os.IsNotExist(err) {
@@ -122,7 +222,7 @@ func NewHdfsFs() *OpfsHdfsFs {
 
 	return &OpfsHdfsFs {
 		meta: meta,
-		Mutex: &sync.Mutex{},
+		RWMutex: &sync.RWMutex{},
 	}
 }
 

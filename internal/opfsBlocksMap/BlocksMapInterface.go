@@ -3,6 +3,8 @@ package opfsBlocksMap
 import (
 	"time"
 	"log"
+	"strings"
+	"fmt"
 )
 
 type Block struct {
@@ -22,6 +24,18 @@ type Blockmap struct {
 	OffEnd uint64
 	B *Block
 	L []*BlockLoc
+}
+func (bm *Blockmap) String() string {
+	head := fmt.Sprintf("start %v, end %v", bm.OffStart, bm.OffEnd)
+	id := fmt.Sprintf("id: poolid %v, blockid %v, gen %v, num %v",bm.B.PoolId, bm.B.BlockId, bm.B.Generation, bm.B.Num)
+
+	locs := make([]string, 0, len(bm.L))
+	for _, loc := range bm.L {
+		locs = append(locs, fmt.Sprintf("datanodeuuid %v, storageuuid %v", loc.DatanodeUuid, loc.StorageUuid))
+	}
+	locsum := strings.Join(locs, "//")
+
+	return  head + "\n" + id + "\n" + locsum
 }
 
 type Blocks struct {

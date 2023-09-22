@@ -5,6 +5,8 @@ import (
 	"net"
 	"fmt"
 	"log"
+	"io"
+	"errors"
 
 	hadoop "github.com/openfs/openfs-hdfs/internal/protocol/hadoop_common"
 	"google.golang.org/protobuf/proto"
@@ -120,11 +122,15 @@ func (s *RpcServer)handleRpc(client *RpcClient) {
 		rh := new(hadoop.RequestHeaderProto)
 		b, err := ReadRPCHeader(client.Conn, rrh, rh)
 		if err != nil {
-			logger.LogIf(nil, fmt.Errorf("client %v readHeader fail %v", client, err))
+			if !errors.Is(err, io.EOF) {
+				logger.LogIf(nil, fmt.Errorf("client %v readHeader fail %v", client, err))
+			}
 			break
 		}
-		log.Printf("method %s, protname %s, protocol version %d\n", rh.GetMethodName(),
-			rh.GetDeclaringClassProtocolName(), rh.GetClientProtocolVersion())
+		if rh.GetMethodName() != "sendHeartbeat" {
+			log.Printf("method %s, protname %s, protocol version %d\n", rh.GetMethodName(),
+				rh.GetDeclaringClassProtocolName(), rh.GetClientProtocolVersion())
+		}
 		ms, err := s.Methods.GetMethod(rh.GetMethodName())
 		if err != nil {
 			panic(err)
@@ -166,7 +172,7 @@ func (s *RpcServer)handleRpc(client *RpcClient) {
 			continue
 		}
 	}
-	logger.LogIf(nil, fmt.Errorf("client %v close", client))
+	//logger.LogIf(nil, fmt.Errorf("client %v close", client))
 	client.Conn.Close()
 }
 

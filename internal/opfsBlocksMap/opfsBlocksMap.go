@@ -10,6 +10,8 @@ import (
 	"fmt"
 	"io"
 	"bytes"
+	"syscall"
+	"strings"
 
 	"github.com/openfs/openfs-hdfs/internal/logger"
 	"github.com/openfs/openfs-hdfs/internal/opfs"
@@ -20,16 +22,28 @@ import (
 )
 
 type opfsBlockId struct {
-	PoolId string `json:"poolId, omitempty"`
+	PoolId string `json:"-"`
 	BlockId uint64 `json:"id, omitempty"`
 	Generation uint64 `json:"gen, omitempty"`
 	Num uint64 `json:"num, omitempty"`
 }
 
 type opfsBlockLoc struct {
+	State int `json: "state, omitempty"`
+	Size uint64 `json: "size, omitempty"`
 	DatanodeUuid string `json:"datanode, omitempty"`
 	StorageUuid string `json:"storage, omitempty"`
 }
+
+func (bl *opfsBlockLoc) equal(l *opfsBlockLoc) bool {
+	if bl.StorageUuid != l.StorageUuid ||
+	   bl.DatanodeUuid != l.DatanodeUuid {
+		return false
+	}
+
+	return true
+}
+
 
 const (
 	stateBlockInit = iota
@@ -78,6 +92,21 @@ func (ob *opfsBlock) Clone() *opfsBlock {
 	}
 }
 
+func (ob *opfsBlock) String() string {
+	head := fmt.Sprintf("state %v, start %v, end %v",
+				ob.State, ob.Start, ob.End)
+	id := fmt.Sprintf("id: poolid %v, blockid %v, gen %v, num %v",ob.Id.PoolId, ob.Id.BlockId, ob.Id.Generation, ob.Id.Num)
+
+	locs := make([]string, 0, len(ob.Locs))
+	for _, loc := range ob.Locs {
+		locs = append(locs, fmt.Sprintf("state %v, size %v, datanodeuuid %v, storageuuid %v", loc.State,
+	                      loc.Size, loc.DatanodeUuid, loc.StorageUuid))
+	}
+	locsum := strings.Join(locs, "//")
+
+	return  head + "\n" + id + "\n" + locsum
+}
+
 var ErrNoLocs error = errors.New("locs number not enough")
 
 func (ob *opfsBlock) excludeDatanode(uuids []string, replicate int) error {
@@ -120,16 +149,63 @@ func (ob *opfsBlock) Equal(b *opfsBlock) bool {
 	return true
 }
 
+func (ob *opfsBlock) getCommitCount() int {
+	res := 0
+	for _, loc := range ob.Locs {
+		if loc.State == stateBlockCommit {
+			res++
+		}
+	}
+
+	return res
+}
+
+func (ob *opfsBlock) getCommitLocs() []*opfsBlockLoc {
+	res := make([]*opfsBlockLoc, 0, len(ob.Locs))
+	for _, loc := range ob.Locs {
+		if loc.State == stateBlockCommit {
+			res = append(res, loc)
+		}
+	}
+
+	return res
+}
+
+func (ob *opfsBlock) getLocByLoc(l *opfsBlockLoc) *opfsBlockLoc {
+	for _, loc := range ob.Locs {
+		if loc.equal(l) {
+			return loc
+		}
+	}
+
+	return nil
+}
+
+func (ob *opfsBlock) commitLocs(locs []*opfsBlockLoc, size uint64) error {
+	for _, loc := range locs {
+		loct := ob.getLocByLoc(loc)
+		if loct == nil {
+			return syscall.ENOENT
+		}
+		loct.State = stateBlockCommit
+		loct.Size = size
+	}
+
+	return nil
+}
+
+
 type opfsBlocks struct {
-	Filename string `json:"path, omitempty"`
+	Filename string `json:"-"`
 	BlockSize uint64 `json:"blocksize, omitempty"`
 	Replicate int `json:"replicate, omitempty"`
+	ReplicateMin int `json:"replicatemin, omitempty"`
 	Blocks []*opfsBlock `json:"blocks, omitempty"`
 }
 
 type opfsBlocksMap struct {
 	sync.RWMutex
-	defaultBlockSize uint64
+	conf *opfsBlocksMapConf
 	blocksmap map[string]*opfsBlocks
 	constructmap map[string]*opfsBlocks
 }
@@ -187,6 +263,27 @@ func opfsBlockGetUpdateTime(src string) (time.Time, error) {
 	return t, nil
 }
 
+func convertLocsToBlockLoc(locs []*opfsBlockLoc) []*BlockLoc {
+	res := make([]*BlockLoc, 0, len(locs))
+	for _, loc := range locs {
+		datanodeuuid := loc.DatanodeUuid
+		storageuuid := loc.StorageUuid
+		if loc.DatanodeUuid == datanodeMap.LocLocation &&
+		   loc.StorageUuid == datanodeMap.LocLocation {
+			dm := datanodeMap.GetGlobalDatanodeMap()
+			datanodeuuid = dm.GetLocDatanodeUuid()
+			storageuuid = dm.GetStorageUuid(datanodeuuid)
+		}
+		bl := &BlockLoc {
+			DatanodeUuid: datanodeuuid,
+			StorageUuid: storageuuid,
+		}
+		res = append(res, bl)
+	}
+
+	return res
+}
+
 func convertToBlocks(bs *opfsBlocks) *Blocks {
 	t, err := opfsBlockGetUpdateTime(bs.Filename)
 	if err != nil {
@@ -212,14 +309,7 @@ func convertToBlocks(bs *opfsBlocks) *Blocks {
 				Generation:b.Id.Generation,
 				Num:b.Id.Num,
 			},
-			L: make([]*BlockLoc, 0, len(b.Locs)),
-		}
-		for _, l := range b.Locs {
-			bl := &BlockLoc {
-				DatanodeUuid: l.DatanodeUuid,
-				StorageUuid: l.StorageUuid,
-			}
-			bm.L = append(bm.L, bl)
+			L: convertLocsToBlockLoc(b.Locs),
 		}
 		res.Bms = append(res.Bms, bm)
 	}
@@ -227,9 +317,8 @@ func convertToBlocks(bs *opfsBlocks) *Blocks {
 	return res
 }
 
-func loadFromFileToBlocks(filename string, blocksize, start, end uint64) (*opfsBlocks, error) {
+func loadFromFileToBlocks(filename string, blocksize, start, end uint64, replicate, replicatemin int) (*opfsBlocks, error) {
 	count := ((start + end - start + 1) / blocksize - start / blocksize) + 1
-	first := start / blocksize
 	bs := make([]*opfsBlock, 0, int(count))
 	dm := datanodeMap.GetGlobalDatanodeMap()
 	for i := uint64(0); i < count; i++ {
@@ -239,7 +328,7 @@ func loadFromFileToBlocks(filename string, blocksize, start, end uint64) (*opfsB
 			End: start + (i+1) * blocksize  - 1,
 			Id: &opfsBlockId {
 				PoolId: filename,
-				BlockId: first + i,
+				BlockId: start + i * blocksize,
 				Generation: 0,
 				Num: blocksize,
 			},
@@ -259,6 +348,8 @@ func loadFromFileToBlocks(filename string, blocksize, start, end uint64) (*opfsB
 	return &opfsBlocks {
 		Filename: filename,
 		BlockSize: blocksize,
+		Replicate: replicate,
+		ReplicateMin: replicatemin,
 		Blocks: bs,
 	}, nil
 }
@@ -295,12 +386,12 @@ func mergeBlockFromFile(bs *opfsBlocks) *opfsBlocks {
 		end := uint64(size - 1)
 		if end < off {
 			var err error
-			bs, err = loadFromFileToBlocks(bs.Filename, bs.BlockSize, 0, end)
+			bs, err = loadFromFileToBlocks(bs.Filename, bs.BlockSize, 0, end, bs.Replicate, bs.ReplicateMin)
 			if err != nil {
 				return nil
 			}
 		} else {
-			abs, err := loadFromFileToBlocks(bs.Filename, bs.BlockSize, off, end)
+			abs, err := loadFromFileToBlocks(bs.Filename, bs.BlockSize, off, end, bs.Replicate, bs.ReplicateMin)
 			if err != nil {
 				return nil
 			}
@@ -327,12 +418,12 @@ func opfsReadAll(src string) ([]byte, error) {
 }
 
 func loadFromConfig(src string, object interface{}) error {
-	log.Printf("src %v", src)
+//	log.Printf("src %v", src)
 	b, err := opfsReadAll(src)
 	if err != nil {
 		return err
 	}
-	log.Printf("len b %v", len(b))
+//	log.Printf("len b %v", len(b))
 	json := jsoniter.ConfigCompatibleWithStandardLibrary
 	if err = json.Unmarshal(b, object); err != nil {
 		log.Printf("unmarshal fail %v, %T", err, object)
@@ -354,10 +445,6 @@ func GetRandomFileName() string {
 const (
 	defaultConfigPerm = 0777
 )
-
-func cleanTmp(src string) {
-
-}
 
 func saveToConfig(src string, object interface{}) error {
 	//logger.LogIf(nil, fmt.Errorf("object %T, src %v", object, src))
@@ -399,16 +486,29 @@ func saveToConfig(src string, object interface{}) error {
 	return nil
 }
 
+func fillinPoolIdWithFilename(blocks *opfsBlocks) {
+	if blocks.Filename == "" {
+		panic(fmt.Errorf("json will overwrite all struct %v", blocks))
+	}
+
+	for _, b := range blocks.Blocks {
+		b.Id.PoolId = blocks.Filename
+	}
+}
+
 func (obm *opfsBlocksMap) loadWithoutLock(filename string) (*Blocks, error) {
 	blocks, ok := obm.blocksmap[filename]
 	if !ok {
 		configPath := path.Join(hdfsBlocksDir, filename, hdfsBlocksFile)
-		blocks = new(opfsBlocks)
+		blocks = &opfsBlocks {
+			Filename: filename,
+		}
 		if err := loadFromConfig(configPath, blocks); err != nil {
 			if os.IsNotExist(err) {
 				size, _ := getFileSize(filename)
 				end := uint64(size - 1)
-				blocks, err = loadFromFileToBlocks(filename, obm.defaultBlockSize, 0, end)
+				blocks, err = loadFromFileToBlocks(filename, obm.conf.defaultBlockSize, 0, end,
+								   obm.conf.defaultReplicate, obm.conf.defaultReplicateMin)
 				if err != nil {
 					logger.LogIf(nil, fmt.Errorf("load from opfs file %v, %v", filename, err))
 					return nil, err
@@ -418,6 +518,7 @@ func (obm *opfsBlocksMap) loadWithoutLock(filename string) (*Blocks, error) {
 			}
 			return nil, err
 		}
+		fillinPoolIdWithFilename(blocks)
 		//process filename change from openfs fs interface
 		blocks = mergeBlockFromFile(blocks)
 		obm.blocksmap[filename] = blocks
@@ -478,14 +579,6 @@ func (obm *opfsBlocksMap)Save(filename string, bs *Blocks) error {
 }
 
 func convertToBlockmap(b *opfsBlock) *Blockmap {
-	locs := make([]*BlockLoc, 0, len(b.Locs))
-	for _, l := range b.Locs {
-		bl := &BlockLoc {
-			DatanodeUuid: l.DatanodeUuid,
-			StorageUuid: l.StorageUuid,
-		}
-		locs = append(locs, bl)
-	}
 	return &Blockmap {
 		OffStart: b.Start,
 		OffEnd: b.End,
@@ -495,7 +588,7 @@ func convertToBlockmap(b *opfsBlock) *Blockmap {
 			Generation: b.Id.Generation,
 			Num: b.Id.Num,
 		},
-		L: locs,
+		L: convertLocsToBlockLoc(b.Locs),
 	}
 }
 
@@ -512,22 +605,27 @@ func getOpfsBlockLocFromDatanodeLoc(dlocs []*datanodeMap.DatanodeLoc) []*opfsBlo
 	return res
 }
 
-func newOpfsBlock(prev *opfsBlock, bs *opfsBlocks, excludes []string) *opfsBlock {
+func newOpfsBlock(prev *opfsBlock, bs *opfsBlocks, excludes []string) (*opfsBlock, error) {
 	start := uint64(0)
 	end := bs.BlockSize - 1
 	bid := uint64(0)
 	if prev != nil {
 		start = prev.End + 1
 		end = start + bs.BlockSize - 1
-		bid = prev.Id.BlockId + 1
+		bid = prev.Id.BlockId + bs.BlockSize
 	}
 	dm := datanodeMap.GetGlobalDatanodeMap()
-	dlocs, _ := dm.GetDatanodeWithAllocMethod(datanodeMap.AllocMethodOptions {
-		Method: datanodeMap.ReplicateMethod,
+	dlocs, err := dm.GetDatanodeWithAllocMethod(datanodeMap.AllocMethodOptions {
+		Method: datanodeMap.OpfsEcMethod,
 		Replicate: bs.Replicate,
+		ReplicateMin: bs.ReplicateMin,
 		StorageType: "DISK",
 		Excludes: excludes,
 	})
+	if err != nil {
+		logger.LogIf(nil, fmt.Errorf("alloc dlocs fail %v", err))
+		return nil, err
+	}
 	locs := getOpfsBlockLocFromDatanodeLoc(dlocs)
 	return &opfsBlock {
 		State: stateBlockConstruct,
@@ -540,7 +638,7 @@ func newOpfsBlock(prev *opfsBlock, bs *opfsBlocks, excludes []string) *opfsBlock
 			Num: 0,
 		},
 		Locs: locs,
-	}
+	}, nil
 }
 
 func (obm *opfsBlocksMap) addConstructmap(filename string, ob *opfsBlock) error {
@@ -663,7 +761,10 @@ func (obm *opfsBlocksMap) AddBlock(filename string, opts ...AddBlockOpt) (resB *
 		if bt.Id.Num != b.End - b.Start + 1 {
 			panic(fmt.Errorf("append file? will do this case"))
 		}
-		bn := newOpfsBlock(b, blocks, options.Excludes)
+		bn, err := newOpfsBlock(b, blocks, options.Excludes)
+		if err != nil {
+			return nil, err
+		}
 		err = obm.addConstructmap(filename, bn)
 		if err != nil {
 			return nil, err
@@ -692,7 +793,11 @@ func (obm *opfsBlocksMap) AddBlock(filename string, opts ...AddBlockOpt) (resB *
 		}
 		lastb = b
 	}
-	bn := newOpfsBlock(lastb, blocks, options.Excludes)
+	bn, err := newOpfsBlock(lastb, blocks, options.Excludes)
+	if err != nil {
+		return nil, err
+	}
+	log.Printf("bn %v", bn)
 	err = obm.addConstructmap(filename, bn)
 	if err != nil {
 		return nil, err
@@ -701,7 +806,23 @@ func (obm *opfsBlocksMap) AddBlock(filename string, opts ...AddBlockOpt) (resB *
 	return convertToBlockmap(bn), nil
 }
 
+func convertOpfsBlockLoc(locs []*BlockLoc) []*opfsBlockLoc {
+	res := make([]*opfsBlockLoc, 0, len(locs))
+	for _, loc := range locs {
+		r := &opfsBlockLoc {
+			DatanodeUuid: loc.DatanodeUuid,
+			StorageUuid: loc.StorageUuid,
+		}
+		res = append(res, r)
+	}
+
+	return res
+}
+
 func convertToOpfsBlock(bm *Blockmap) *opfsBlock {
+	if bm == nil {
+		return nil
+	}
 	return &opfsBlock {
 		Start: bm.OffStart,
 		End: bm.OffEnd,
@@ -711,6 +832,7 @@ func convertToOpfsBlock(bm *Blockmap) *opfsBlock {
 			Generation: bm.B.Generation,
 			Num: bm.B.Num,
 		},
+		Locs: convertOpfsBlockLoc(bm.L),
 	}
 }
 
@@ -742,12 +864,16 @@ func (obm *opfsBlocksMap) CommitBlock(filename string, bm *Blockmap) error {
 	}
 	var ba *opfsBlock
 	for _, b := range bs.Blocks {
-		if b.Equal(bt) {
-			ba = b
-			ba.Id.Num = bt.Id.Num
-			ba.State = stateBlockCommit
-			break
+		if !b.Equal(bt) {
+			continue
 		}
+		ba = b
+		ba.Id.Num = bt.Id.Num
+		ba.commitLocs(bt.Locs, bt.Id.Num)
+		if ba.getCommitCount() >= bs.ReplicateMin {
+			ba.State = stateBlockCommit
+		}
+		break
 	}
 	if ba == nil {
 		panic(fmt.Errorf("only construct block can commit %v", obm))
@@ -759,31 +885,60 @@ func (obm *opfsBlocksMap) CommitBlock(filename string, bm *Blockmap) error {
 func (obm *opfsBlocksMap) Create(filename string, replicate int, blockSize uint64) error {
 	obm.Lock()
 	defer obm.Unlock()
+	if replicate == 0 {
+		logger.LogIf(nil, fmt.Errorf("replicate is not set with default %v instead", obm.conf.defaultReplicate))
+		replicate = obm.conf.defaultReplicate
+	}
+	if blockSize == 0 {
+		logger.LogIf(nil, fmt.Errorf("replicate is not set with default %v instead", obm.conf.defaultReplicate))
+		blockSize = obm.conf.defaultBlockSize
+	}
+	replicatemin := obm.conf.defaultReplicateMin
+
 	bs := &opfsBlocks {
 		Filename:filename,
 		BlockSize: blockSize,
 		Replicate: replicate,
+		ReplicateMin: replicatemin,
 	}
 	obm.blocksmap[filename] = bs
 	configPath := path.Join(hdfsBlocksDir, filename, hdfsBlocksFile)
 	log.Printf("save config %v", configPath)
 	return saveToConfig(configPath, bs)
 }
-// do blocks rename after namespace rename
-func (obm *opfsBlocksMap) Rename(src, dst string) error {
-	size, _ := getFileSize(dst)
-	end := uint64(size - 1)
-	blocks, err := loadFromFileToBlocks(dst, obm.defaultBlockSize, 0, end)
+
+func isOpfsDir(src string) (bool, error) {
+	f, err := opfs.Open(src)
 	if err != nil {
-		return err
+		return false, err
 	}
 
-	dstConfigPath := path.Join(hdfsBlocksDir, dst, hdfsBlocksFile)
-	if err := saveToConfig(dstConfigPath, blocks); err != nil {
-		return err
+	defer f.Close()
+	fi, err := f.Stat()
+	if err != nil {
+		return false, err
 	}
-	srcConfigPath := path.Join(hdfsBlocksDir, src, hdfsBlocksFile)
-	if err := opfs.RemovePath(srcConfigPath); err != nil {
+
+	return fi.IsDir(), nil
+}
+
+// do blocks rename after namespace rename
+func (obm *opfsBlocksMap) Rename(src, dst string) error {
+	dstConfigPath := path.Join(hdfsBlocksDir, dst)
+	srcConfigPath := path.Join(hdfsBlocksDir, src)
+	if err := opfs.RenamePath(srcConfigPath, dstConfigPath, defaultConfigPerm); err != nil {
+		if os.IsNotExist(err) {
+			isDir, err2 := isOpfsDir(dst)
+			if err2 != nil {
+				panic(err2)
+			}
+			if !isDir {
+				panic(fmt.Errorf("src %v, %v not exist", src, srcConfigPath))
+			}
+			logger.LogIf(nil, fmt.Errorf("src %v, %v not exist", src, srcConfigPath))
+			return nil
+		}
+		logger.LogIf(nil, err)
 		return err
 	}
 
@@ -817,13 +972,16 @@ func (obm *opfsBlocksMap) Complete(filename string, last *Blockmap, blocks *Bloc
 	}
 	cbs, ok := obm.constructmap[filename]
 	if !ok {
-		panic(fmt.Errorf("complete file %v not in construct", filename))
+		//this is a touhz file, size of file is zero
+		return nil
+		//panic(fmt.Errorf("complete file %v not in construct", filename))
 	}
 	for i, b := range cbs.Blocks {
 		if b.State != stateBlockCommit {
 			return ErrNotCommited
 		}
-		if i == len(cbs.Blocks) - 1 {
+		if i == len(cbs.Blocks) - 1 &&
+		   lastb != nil {
 	           if !b.Equal(lastb) {
 			   return ErrInvalidLast
 		   }
@@ -884,12 +1042,40 @@ func (obm *opfsBlocksMap) Delete(filename string) error {
 	return opfs.RemovePath(srcConfigPath)
 }
 
+type opfsBlocksMapConf struct {
+	defaultBlockSize uint64
+	defaultReplicate int
+	defaultReplicateMin int
+}
+
+func (obm *opfsBlocksMap) getDefaultBlockSize() uint64 {
+	obm.RLock()
+	defer obm.RUnlock()
+	return obm.conf.defaultBlockSize
+}
+
+func (obm *opfsBlocksMap) getDefaultReplicate() int {
+	obm.RLock()
+	defer obm.RUnlock()
+	return obm.conf.defaultReplicate
+}
+
+func (obm *opfsBlocksMap) getDefaultReplicateMin() int {
+	obm.RLock()
+	defer obm.RUnlock()
+	return obm.conf.defaultReplicateMin
+}
+
 func NewOpfsBlocksMap(core hconf.HadoopConf) *opfsBlocksMap {
 	globalLocks = &locksMap {
 		locks: make(map[string]*opfsFileLock),
 	}
 	return &opfsBlocksMap {
-		defaultBlockSize: core.ParseBlockSize(),
+		conf: &opfsBlocksMapConf {
+			defaultBlockSize: core.ParseBlockSize(),
+			defaultReplicate: core.ParseDfsReplicate(),
+			defaultReplicateMin: core.ParseNamenodeReplicateMin(),
+		},
 		blocksmap: make(map[string]*opfsBlocks),
 		constructmap: make(map[string]*opfsBlocks),
 	}

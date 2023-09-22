@@ -127,9 +127,11 @@ func opfsRegisterDatanode(ctx context.Context, r *hdsp.RegisterDatanodeRequestPr
 	log.Printf("datanode id %v, storageinfo %v, Keys %v, version %v", reg.GetDatanodeID(), reg.GetStorageInfo(),
 									reg.GetKeys(), reg.GetSoftwareVersion())
 	datanode := convertRegisterProtoToDatanode(reg)
-	ipAddr := getIpAddrFromContext(ctx)
-	if ipAddr != "" {
-		datanode.Id.Ipaddr = ipAddr
+	if datanode.Id.Ipaddr == "0.0.0.0"{
+		ipAddr := getIpAddrFromContext(ctx)
+		if ipAddr != "" {
+			datanode.Id.Ipaddr = ipAddr
+		}
 	}
 	datamap := datanodeMap.GetGlobalDatanodeMap()
 	err := datamap.Register(datanode)

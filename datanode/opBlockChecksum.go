@@ -116,6 +116,21 @@ func getCrcBytes(finfo *argsFileInfo)([]byte, error) {
 	return b, nil
 }
 
+func convertChecksumTypeToProto(checkType string) *hdfs.ChecksumTypeProto {
+	switch checkType {
+	case "CHECKSUM_NULL":
+		return hdfs.ChecksumTypeProto_CHECKSUM_NULL.Enum()
+	case "CHECKSUM_CRC32":
+		return hdfs.ChecksumTypeProto_CHECKSUM_CRC32.Enum()
+	case "CHECKSUM_CRC32C":
+		return hdfs.ChecksumTypeProto_CHECKSUM_CRC32C.Enum()
+	default:
+		panic(fmt.Errorf("check type %s", checkType))
+	}
+
+	return hdfs.ChecksumTypeProto_CHECKSUM_CRC32C.Enum()
+}
+
 
 func md5crc(args *argsFileInfo) (*hdfs.BlockOpResponseProto, error) {
 	res := new(hdfs.BlockOpResponseProto)
@@ -135,7 +150,7 @@ func md5crc(args *argsFileInfo) (*hdfs.BlockOpResponseProto, error) {
 	res.ChecksumResponse.BytesPerCrc = proto.Uint32(uint32(defaultChunkSize))
 	res.ChecksumResponse.CrcPerBlock = proto.Uint64(uint64((args.size + defaultChunkSize - 1)/defaultChunkSize))
 	res.ChecksumResponse.BlockChecksum = md5b
-	res.ChecksumResponse.CrcType = hdfs.ChecksumTypeProto_CHECKSUM_CRC32C.Enum()
+	res.ChecksumResponse.CrcType = convertChecksumTypeToProto(args.checktype)
 	res.ChecksumResponse.BlockChecksumOptions = new(hdfs.BlockChecksumOptionsProto)
 	res.ChecksumResponse.BlockChecksumOptions.BlockChecksumType = hdfs.BlockChecksumTypeProto_MD5CRC.Enum()
 	res.ChecksumResponse.BlockChecksumOptions.StripeLength = proto.Uint64(0)
@@ -183,7 +198,7 @@ func compositecrc(args *argsFileInfo) (*hdfs.BlockOpResponseProto, error) {
 	res.ChecksumResponse.BytesPerCrc = proto.Uint32(uint32(defaultChunkSize))
 	res.ChecksumResponse.CrcPerBlock = proto.Uint64(uint64((args.size + defaultChunkSize - 1)/defaultChunkSize))
 	res.ChecksumResponse.BlockChecksum = b
-	res.ChecksumResponse.CrcType = hdfs.ChecksumTypeProto_CHECKSUM_CRC32C.Enum()
+	res.ChecksumResponse.CrcType = convertChecksumTypeToProto(args.checktype)
 	res.ChecksumResponse.BlockChecksumOptions = new(hdfs.BlockChecksumOptionsProto)
 	res.ChecksumResponse.BlockChecksumOptions.BlockChecksumType = hdfs.BlockChecksumTypeProto_COMPOSITE_CRC.Enum()
 	res.ChecksumResponse.BlockChecksumOptions.StripeLength = proto.Uint64(uint64(defaultChunkSize))
@@ -225,7 +240,7 @@ func opBlockChecksum(r *hdfs.OpBlockChecksumProto) (*hdfs.BlockOpResponseProto, 
 		off : block.GetBlockId(),
 		size : block.GetNumBytes(),
 		perSize : perSize,
-		checktype: hdfs.ChecksumTypeProto_CHECKSUM_CRC32C.String(),
+		checktype: getDefaultChunkCrcMethod(),
 	}
 
 	switch options.checktype {

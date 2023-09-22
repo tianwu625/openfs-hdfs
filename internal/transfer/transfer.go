@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log"
 
 	hdfs "github.com/openfs/openfs-hdfs/internal/protocol/hadoop_hdfs"
 	"google.golang.org/protobuf/proto"
@@ -103,6 +104,7 @@ func ReadBlockOpRequest(r io.Reader) (op uint8, msg proto.Message, err error) {
 		return 0, nil, err
 	}
 	if bheader[versionPos] != dataTransferVersion {
+		log.Printf("bheader %v", bheader)
 		return 0, nil, ErrVersionMismatch
 	}
 	op = bheader[opPos]

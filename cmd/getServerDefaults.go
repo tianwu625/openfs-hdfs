@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"context"
+	"fmt"
 
 	hdfs "github.com/openfs/openfs-hdfs/internal/protocol/hadoop_hdfs"
 	"google.golang.org/protobuf/proto"
@@ -17,17 +18,34 @@ func getServerDefaults(ctx context.Context, m proto.Message) (proto.Message, err
 	return opfsGetServerDefaults(req)
 }
 
+func convertChecksumTypeToProto(checkType string) *hdfs.ChecksumTypeProto {
+	switch checkType {
+	case "NULL":
+		return hdfs.ChecksumTypeProto_CHECKSUM_NULL.Enum()
+	case "CRC32":
+		return hdfs.ChecksumTypeProto_CHECKSUM_CRC32.Enum()
+	case "CRC32C":
+		return hdfs.ChecksumTypeProto_CHECKSUM_CRC32C.Enum()
+	default:
+		panic(fmt.Errorf("check type %s", checkType))
+	}
+
+	return hdfs.ChecksumTypeProto_CHECKSUM_CRC32C.Enum()
+}
+
 func opfsGetServerDefaults(r *hdfs.GetServerDefaultsRequestProto) (*hdfs.GetServerDefaultsResponseProto, error) {
-	res := new(hdfs.GetServerDefaultsResponseProto)
-	res.ServerDefaults = new(hdfs.FsServerDefaultsProto)
-	res.ServerDefaults.BlockSize = proto.Uint64(134217728)
-	res.ServerDefaults.BytesPerChecksum = proto.Uint32(512)
-	res.ServerDefaults.WritePacketSize = proto.Uint32(65536)
-	res.ServerDefaults.Replication = proto.Uint32(1)
-	res.ServerDefaults.FileBufferSize = proto.Uint32(4096)
-	res.ServerDefaults.EncryptDataTransfer = proto.Bool(false)
-	res.ServerDefaults.TrashInterval = proto.Uint64(0)
-	res.ServerDefaults.ChecksumType = hdfs.ChecksumTypeProto_CHECKSUM_CRC32C.Enum()
-	return res, nil
+	ccf := getGlobalConstConf()
+	return &hdfs.GetServerDefaultsResponseProto {
+		ServerDefaults: &hdfs.FsServerDefaultsProto {
+			BlockSize: proto.Uint64(ccf.blockSize),
+			BytesPerChecksum: proto.Uint32(ccf.bytesPerChecksum),
+			WritePacketSize: proto.Uint32(ccf.writePacketSize),
+			Replication: proto.Uint32(ccf.replicate),
+			FileBufferSize: proto.Uint32(ccf.fileBufferSize),
+			EncryptDataTransfer: proto.Bool(ccf.encryptDataTransfer),
+			TrashInterval: proto.Uint64(ccf.trashInterval),
+			ChecksumType: convertChecksumTypeToProto(ccf.crcChunkMethod),
+		},
+	}, nil
 }
 

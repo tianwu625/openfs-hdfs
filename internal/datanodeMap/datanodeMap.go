@@ -4,6 +4,9 @@ import (
 	"sync"
 	"log"
 	"errors"
+	"fmt"
+
+	"github.com/openfs/openfs-hdfs/internal/logger"
 )
 
 var (
@@ -92,6 +95,10 @@ func (dn *Datanode) Clone() *Datanode {
 		Keys: dn.Keys.Clone(),
 		SoftVersion: dn.SoftVersion,
 	}
+}
+
+func (dn *Datanode) IsLocal() bool {
+	return true
 }
 
 const EventBuffer = 128
@@ -194,12 +201,14 @@ func (dm *DatanodeMap) GetDatanodeEntry(uuid string) *datanodeEntry {
 
 const (
 	ReplicateMethod int = iota
+	OpfsEcMethod
 	MaxMethod
 )
 
 type AllocMethodOptions struct {
 	Method int
 	Replicate int
+	ReplicateMin int
 	StorageType string
 	Excludes []string //exclude datanode uuid
 }
@@ -217,6 +226,10 @@ func (dm *DatanodeMap) GetDatanodeUuid() string {
 	}
 
 	return ""
+}
+
+func (dm *DatanodeMap) GetLocDatanodeUuid() string {
+	return dm.GetDatanodeUuid()
 }
 
 func (dm *DatanodeMap) GetStorageUuid(datanode string) string {
@@ -292,6 +305,48 @@ func (dm *DatanodeMap) selectDatanodes(params AllocMethodOptions) ([]*DatanodeLo
 		}
 	}
 	if count != 0 {
+		if params.Replicate - count >= params.ReplicateMin {
+			return res, nil
+		}
+		return res, ErrFailAlloc
+	}
+
+	return res, nil
+}
+
+const (
+	LocLocation = "localhost"
+)
+
+func (dm *DatanodeMap) selectLocDatanode(params AllocMethodOptions) ([]*DatanodeLoc, error) {
+	count := params.Replicate
+	res := make([]*DatanodeLoc, 0, count)
+	for _, v := range dm.datanodes {
+		if shouldExclude(params.Excludes, v) {
+			continue
+		}
+		dinfo := v.AllocStorages(params.StorageType)
+		if dinfo == nil {
+			continue
+		}
+		if !v.node.IsLocal() {
+			continue
+		}
+		dinfo.Uuid = LocLocation
+		node := v.node.Clone()
+		node.Id.Uuid = LocLocation
+		dl := &DatanodeLoc {
+			Node: node,
+			Storage: dinfo,
+		}
+		res = append(res, dl)
+		count--
+		if count == 0 {
+			break
+		}
+	}
+	if count != 0 {
+		logger.LogIf(nil, fmt.Errorf("fail to alloc loc datanode"))
 		return res, ErrFailAlloc
 	}
 
@@ -302,11 +357,18 @@ func (dm *DatanodeMap) GetDatanodeWithAllocMethod(params AllocMethodOptions) ([]
 	dm.RLock()
 	defer dm.RUnlock()
 	if params.Method == ReplicateMethod {
-		if len(dm.datanodes) < params.Replicate {
+		if len(dm.datanodes) < params.ReplicateMin {
 			return nil, ErrNotSatisfyReplicate
 		}
 
 		return dm.selectDatanodes(params)
+	}
+
+	if params.Method == OpfsEcMethod {
+		if params.Replicate > 1 {
+			params.Replicate = 1
+		}
+		return dm.selectLocDatanode(params)
 	}
 
 	return nil, ErrInvalidMethod

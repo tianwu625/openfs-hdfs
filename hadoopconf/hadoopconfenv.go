@@ -7,9 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	"sync"
-	"log"
 )
-
 type property struct {
 	Name  string `xml:"name"`
 	Value string `xml:"value"`
@@ -40,7 +38,6 @@ func (he *HadoopConfEnv) load(configPath string) (HadoopConf, error) {
 	pList := propertyList{}
 	f, err := ioutil.ReadFile(configPath)
 	if os.IsNotExist(err) {
-		log.Printf("not exist %v", err)
 		return conf, nil
 	} else if err != nil {
 		return conf, err
@@ -84,7 +81,7 @@ func (he *HadoopConfEnv) getConfigDefaultPath(filename string) string {
 	case ConfHadoopDir:
 		return filepath.Join(filepath.Dir(filepath.Dir(he.ConfDir)), filename)
 	case ConfOpfsConf:
-		return he.Conf
+		return filename
 	default:
 		panic(fmt.Errorf("not support type %v", he.Ctype))
 	}
@@ -96,6 +93,12 @@ var defaultConfFiles = []string{
 	"share/doc/hadoop/hadoop-project-dist/hadoop-hdfs/hdfs-default.xml",
 	"share/doc/hadoop/hadoop-project-dist/hadoop-common/core-default.xml",
 	"share/doc/hadoop/hadoop-mapreduce-client/hadoop-mapreduce-client-core/mapred-default.xml",
+}
+
+var defaultOpfsConfFiles = []string {
+	"/etc/default/hdfs-default/core-default.xml",
+	"/etc/default/hdfs-default/hdfs-default.xml",
+	"/etc/default/hdfs-default/mapred-default.xml",
 }
 
 func (he *HadoopConfEnv) loadHadoopDefault (filename string) (HadoopConf, error) {
@@ -123,7 +126,18 @@ func (he *HadoopConfEnv) getDefaultCore() (HadoopConf, error) {
 	}
 	res = res.Merge(conf)
 	case ConfOpfsConf:
-		panic(fmt.Errorf("not support for now"))
+	for _, f := range defaultOpfsConfFiles {
+		conf, err := he.loadHadoopDefault(f)
+		if err != nil  {
+			return res, err
+		}
+		res = res.Merge(conf)
+	}
+	conf, err := he.loadOpfsDefault()
+	if err != nil {
+		return res, err
+	}
+	res = res.Merge(conf)
 	default:
 		panic(fmt.Errorf("not support this type %v", t))
 	}
@@ -171,7 +185,16 @@ func (he *HadoopConfEnv) getCore() (HadoopConf, error) {
 		res = res.Merge(conf)
 	}
 	case ConfOpfsConf:
-		panic(fmt.Errorf("not support for now"))
+	for _, f := range confFiles {
+		conf, err := he.loadHadoopConf(f)
+		if err != nil {
+			if os.IsNotExist(err) {
+				return res, nil
+			}
+			return res, err
+		}
+		res = res.Merge(conf)
+	}
 	default:
 		panic(fmt.Errorf("not support this type %v", t))
 	}

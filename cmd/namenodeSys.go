@@ -41,6 +41,17 @@ func NewNamenodeConf(core hconf.HadoopConf) (*namenodeConf, error) {
 	}, nil
 }
 
+type constConf struct {
+	blockSize uint64
+	bytesPerChecksum uint32
+	writePacketSize uint32
+	replicate uint32
+	fileBufferSize uint32
+	encryptDataTransfer bool
+	trashInterval uint64
+	crcChunkMethod string
+}
+
 type namenodeSys struct {
 	cf *namenodeConf
 	fs *fsmeta.OpfsHdfsFs
@@ -52,6 +63,7 @@ type namenodeSys struct {
 	processbefores []rpc.RpcProcessBeforeInterface
 	replybefores []rpc.RpcReplyBeforeInterface
 	smm *fsmeta.SafeModeManager
+	ccf *constConf
 }
 
 func (sys *namenodeSys) startNamenodeInfoServer() {
@@ -163,6 +175,16 @@ func NewNamenodeSys(core hconf.HadoopConf) *namenodeSys {
 		handshakeafters: make([]rpc.RpcHandshakeAfterInterface, 0),
 		processbefores: make([]rpc.RpcProcessBeforeInterface, 0),
 		replybefores: make([]rpc.RpcReplyBeforeInterface, 0),
+		ccf: &constConf {
+			blockSize: core.ParseBlockSize(),
+			bytesPerChecksum: uint32(core.ParseChunkSize()),
+			writePacketSize: uint32(core.ParsePacketSize()),
+			replicate: uint32(core.ParseDfsReplicate()),
+			fileBufferSize: core.ParseFileBufferSize(),
+			encryptDataTransfer: core.ParseEncryptDataTransfer(),
+			trashInterval: core.ParseTrashInterval(),
+			crcChunkMethod: core.ParseChunkCrcMethod(),
+		},
 	}
 	sys.smm = fsmeta.InitSafeModeManager(
 			sys.fs,
@@ -217,4 +239,8 @@ func getGlobalReconfig() *reconf.ReconfigOnline {
 
 func getGlobalSafeModeManager() *fsmeta.SafeModeManager {
 	return globalnamenodeSys.smm
+}
+
+func getGlobalConstConf() *constConf {
+	return globalnamenodeSys.ccf
 }

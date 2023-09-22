@@ -84,4 +84,8 @@
            The datanode ipc server address and port.
        </description>
     </property>
+    <property>
+	<name>fs.defaultFS</name>
+	<value>hdfs://localhost:8020</value>
+    </property>
 </configuration>

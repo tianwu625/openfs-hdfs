@@ -2,7 +2,7 @@ package rpc
 
 import (
 	"encoding/binary"
-	"log"
+	//"log"
 	"os"
 	"context"
 
@@ -48,7 +48,7 @@ func NewRpcMethods() *RpcMethods {
 
 func ParseRequest(b []byte, req proto.Message) (proto.Message, error) {
 	msgLength, n := binary.Uvarint(b)
-	log.Printf("msgLength %v, n %v, b len %v\n", msgLength, n, len(b))
+	//log.Printf("msgLength %v, n %v, b len %v\n", msgLength, n, len(b))
 	b = b[n:]
 	err := proto.Unmarshal(b[:msgLength], req)
 	if err != nil {

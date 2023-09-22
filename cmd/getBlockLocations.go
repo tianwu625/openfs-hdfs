@@ -205,60 +205,7 @@ func opfsGetBlocks(src string, off uint64, length uint64) (*hdfs.LocatedBlocksPr
 
 	return blocksProto, nil
 }
-/*
-func opfsGetBlocks(src string, off uint64, length uint64) (*hdfs.LocatedBlocksProto, error) {
-	 size, err := getFileSize(src)
-	 if err != nil {
-		 return new(hdfs.LocatedBlocksProto), err
-	 }
-	 if int64(off + length) > size {
-		 log.Printf("off %v, length %v, size %v, change to %v\n", off, length, size, uint64(size) - off)
-		 length = uint64(size) - off
-	 }
-	 blocks := ((off + length) / defaultBlockSize - off / defaultBlockSize) + 1
-	 first := off / defaultBlockSize
-	 blocksproto := new(hdfs.LocatedBlocksProto)
-	 blocksproto.FileLength = proto.Uint64(uint64(size))
-	 blocksproto.UnderConstruction = proto.Bool(false)
-	 blocksproto.Blocks = make([]*hdfs.LocatedBlockProto, 0)
-	 for i:= uint64(0); i < blocks; i++ {
-		eb := new(hdfs.ExtendedBlockProto)
-		eb.PoolId = proto.String(src)
-		eb.BlockId = proto.Uint64(first + uint64(i))
-		eb.GenerationStamp = proto.Uint64(1000)
-		eb.NumBytes = proto.Uint64(uint64(minInt64(int64(length - (first + uint64(i)) * defaultBlockSize), defaultBlockSize)))
-		lb := new(hdfs.LocatedBlockProto)
-		lb.B = eb
-		lb.Offset = proto.Uint64((first + uint64(i)) * defaultBlockSize)
-		lb.Locs = getDatanodeInfo(eb)
-		lb.Corrupt = proto.Bool(false)
-		lb.BlockToken = new(hadoop.TokenProto)
-		lb.BlockToken.Identifier = []byte{}
-		lb.BlockToken.Password = []byte{}
-		lb.BlockToken.Kind = proto.String("")
-		lb.BlockToken.Service = proto.String("")
-		lb.IsCached = []bool {
-			false,
-		}
-		lb.StorageTypes = []hdfs.StorageTypeProto {
-			hdfs.StorageTypeProto_DISK,
-		}
-		lb.StorageIDs = []string {
-			"openfs-xx",
-		}
-		blocksproto.Blocks = append(blocksproto.Blocks, lb)
-		if i == blocks -1 {
-			blocksproto.LastBlock = lb
-			if lb.GetOffset() + defaultBlockSize >= blocksproto.GetFileLength() {
-				blocksproto.IsLastBlockComplete = proto.Bool(true)
-			} else {
-				blocksproto.IsLastBlockComplete = proto.Bool(false)
-			}
-		}
-	 }
-	 return blocksproto, nil
-}
-*/
+
 func opfsGetBlockLocations(r *hdfs.GetBlockLocationsRequestProto)(*hdfs.GetBlockLocationsResponseProto, error) {
 	 res := new(hdfs.GetBlockLocationsResponseProto)
 	 src := r.GetSrc()

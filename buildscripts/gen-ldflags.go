@@ -6,6 +6,7 @@ import (
 
 func genLDFlags() string {
 	ldflagsStr := "-s -w"
+	//ldflagsStr := ""
 	ldflagsStr += " -X github.com/openfs/openfs-hdfs/cmd.GOPATH=" + os.Getenv("GOPATH")
 	ldflagsStr += " -X github.com/openfs/openfs-hdfs/cmd.GOROOT=" + os.Getenv("GOROOT")
 	return ldflagsStr

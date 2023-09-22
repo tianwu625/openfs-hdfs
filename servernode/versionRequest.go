@@ -12,6 +12,7 @@ import (
 	hdfs "github.com/openfs/openfs-hdfs/internal/protocol/hadoop_hdfs"
 	"google.golang.org/protobuf/proto"
 	"github.com/openfs/openfs-hdfs/internal/rpc"
+	"github.com/openfs/openfs-hdfs/internal/fsmeta"
 )
 
 func versionRequestDec(b []byte) (proto.Message, error) {
@@ -86,20 +87,20 @@ func opfsVersionRequest(r *hdfs.VersionRequestProto) (*hdfs.VersionResponseProto
 	if err != nil {
 		return nil, err
 	}
-	info := getFakeInfo()
+	info := fsmeta.GetGlobalFsMeta().GetMeta()
 	if info == nil {
-		panic(fmt.Errorf("get fake info fail"))
+		panic(fmt.Errorf("get fsmeta fail"))
 	}
 	return &hdfs.VersionResponseProto {
 		Info: &hdfs.NamespaceInfoProto {
 			BuildVersion: proto.String("7824c153d33bb0395652cfd20d57f7fabdf409ea"),
 			Unused: proto.Uint32(uint32(fsinfo.Remaining)),
-			BlockPoolID: proto.String("/"),
+			BlockPoolID: proto.String(info.BlockPool),
 			StorageInfo: &hdfs.StorageInfoProto {
-				LayoutVersion: proto.Uint32(info.layout),
-				NamespceID: proto.Uint32(info.namespaceid),
-				ClusterID: proto.String(info.clusterid),
-				CTime: proto.Uint64(info.ctime),
+				NamespceID: proto.Uint32(info.NameSpaceID),
+				ClusterID: proto.String(info.ClusterID),
+				CTime: proto.Uint64(info.Ctime),
+				LayoutVersion: proto.Uint32(info.Layout),
 			},
 			SoftwareVersion: proto.String("3.3.5"),
 			Capabilities: proto.Uint64(1),

@@ -534,6 +534,7 @@ func (h HadoopConf) ParseDfsHeartbeatInterval() time.Duration {
 
 type DatanodeId struct {
 	IpAddr string
+	Hostname string
 	XferPort uint32
 	InfoPort uint32
 	IpcPort uint32
@@ -631,4 +632,92 @@ func (h HadoopConf) ParseDatanodeId() *DatanodeId {
 	}
 
 	return id
+}
+
+const (
+	DfsReplication = "dfs.replication"
+	DfsReplicationMax = "dfs.replication.max"
+	DfsNamenodeReplicationMin = "dfs.namenode.replication.min"
+	DfsReplicationMin = "dfs.replication.min"
+	DfsNamenodeMaintenanceReplicationMin = "dfs.namenode.maintenance.replication.min"
+	DfsNamenodeSafemodeReplicationMin = "dfs.namenode.safemode.replication.min"
+	DfsNamenodeMaxCorruptFileBlocksReturned = "dfs.namenode.max-corrupt-file-blocks-returned"
+)
+
+func (h HadoopConf) ParseDfsReplicate() int {
+	r, err := strconv.Atoi(h.getValue(DfsReplication))
+	if err != nil {
+		return 0
+	}
+	return r
+}
+
+func (h HadoopConf) ParseNamenodeReplicateMin() int {
+	r, err := strconv.Atoi(h.getValueWithDefault(DfsNamenodeReplicationMin, DfsReplicationMin, ""))
+	if err != nil {
+		return 0
+	}
+
+	return r
+}
+
+func (h HadoopConf) ParseReplicateMax() int {
+	r, err := strconv.Atoi(h.getValue(DfsReplicationMax))
+	if err != nil {
+		return 0
+	}
+
+	return r
+}
+
+const DfsBytesPerChecksum = "dfs.bytes-per-checksum"
+func (h HadoopConf) ParseChunkSize() uint64 {
+	return h.ParseUint64(DfsBytesPerChecksum)
+}
+
+const DfsClientWritePacketSize = "dfs.client-write-packet-size"
+func (h HadoopConf) ParsePacketSize() uint64 {
+	return h.ParseUint64(DfsClientWritePacketSize)
+}
+
+const DfsChecksumType = "dfs.checksum.type"
+func (h HadoopConf) ParseChunkCrcMethod() string {
+	return h.getValue(DfsChecksumType)
+}
+
+const DfsChecksumCombineMode = "dfs.checksum.combine.mode"
+func (h HadoopConf) ParseCrcMethod() string {
+	return h.getValue(DfsChecksumCombineMode)
+}
+
+const FsTrashInterval = "fs.trash.interval"
+func (h HadoopConf) ParseTrashInterval() uint64 {
+	return h.ParseUint64(FsTrashInterval)
+}
+
+func (h HadoopConf) ParseBool(key string) bool {
+	res, err := strconv.ParseBool(h.getValue(key))
+	if err != nil {
+		panic(fmt.Errorf("%v value %v can't convert to Bool", key, h.getValue(key)))
+	}
+
+	return res
+}
+const DfsEncryptDataTransfer = "dfs.encrypt.data.transfer"
+func (h HadoopConf) ParseEncryptDataTransfer() bool {
+	return h.ParseBool(DfsEncryptDataTransfer)
+}
+
+
+func (h HadoopConf) ParseUint32(key string) uint32 {
+	res, err := strconv.Atoi(h.getValue(key))
+	if err != nil {
+		panic(fmt.Errorf("%v value %v can't convert to uint32", key, h.getValue(key)))
+	}
+
+	return uint32(res)
+}
+const IoFileBufferSize = "io.file.buffer.size"
+func (h HadoopConf) ParseFileBufferSize() uint32 {
+	return h.ParseUint32(IoFileBufferSize)
 }

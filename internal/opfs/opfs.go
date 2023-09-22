@@ -184,6 +184,18 @@ func RemoveDir(path string) error {
 	return nil
 }
 
+func RenamePath(src, dst string, perm os.FileMode) error {
+	if err := MakeDirAll(pathutils.Dir(dst), perm); err != nil {
+		return err
+	}
+
+	if err := Rename(src, dst); err != nil {
+		return err
+	}
+
+	return RemoveDirPath(pathutils.Dir(src))
+}
+
 func Rename(src, dst string) error {
 	sdir, sname := filepath.Split(src)
 	ddir, dname := filepath.Split(dst)
@@ -826,12 +838,7 @@ const (
 	rootDir = "/"
 )
 
-func RemovePath(path string) error {
-	if err := RemoveFile(path); err != nil {
-		return err
-	}
-
-	dirs := pathutils.Dir(path)
+func RemoveDirPath(dirs string) error {
 	for dirs != rootDir {
 		if err := RemoveDir(dirs); err != nil {
 			if errors.Is(err, syscall.ENOTEMPTY) {
@@ -843,6 +850,14 @@ func RemovePath(path string) error {
 	}
 
 	return nil
+}
+
+func RemovePath(path string) error {
+	if err := RemoveFile(path); err != nil {
+		return err
+	}
+
+	return RemoveDirPath(pathutils.Dir(path))
 }
 
 func ReadAll(src string) ([]byte, error) {

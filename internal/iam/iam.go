@@ -161,6 +161,7 @@ func threadWork(c <-chan WorkRequest) {
 				panic(err)
 			}
 			sys.Lock()
+			defer sys.Unlock()
 			if err := sys.loadUserWithoutLock(updateReq.user); err != nil {
 				uinfo, ok := sys.users[updateReq.user]
 				if !ok {
@@ -172,7 +173,6 @@ func threadWork(c <-chan WorkRequest) {
 				cb <- err
 			}
 			cb <- nil
-			sys.Unlock()
 		default:
 			panic(fmt.Errorf("action type not support %v", req.action))
 		}
@@ -203,6 +203,7 @@ func startUpdateUserInfo(sys *IAMSys, user string, c chan error) {
 			sys.dropUserWithoutLock(user)
 		}
 		c <- err
+		return
 	}
 	c <- nil
 }
@@ -210,7 +211,8 @@ func startUpdateUserInfo(sys *IAMSys, user string, c chan error) {
 func (sys *IAMSys) doLoadUser(user string) (wait bool, c chan error, err error) {
 	doUpdate := false
 	sys.Lock()
-	defer sys.Lock()
+	defer sys.Unlock()
+	log.Printf("load user!!!")
 	uinfo, ok := sys.users[user]
 	if !ok {
 		//should first and block for this request
@@ -285,7 +287,14 @@ func (sys *IAMSys) waitForUpdate(user string, c chan error) {
 			close(c)
 			break
 		}
-		log.Printf("get failed err %v", res)
+		log.Printf("get failed err %v, %v", res, os.IsNotExist(res))
+		if os.IsNotExist(res) {
+			sys.Lock()
+			defer sys.Unlock()
+			delete(sys.waiters, user)
+			close(c)
+			break
+		}
 		t := sys.getNegative()
 		time.Sleep(t)
 		sys.Lock()
@@ -328,18 +337,19 @@ func (sys *IAMSys) GetGroupsByUser(user string) ([]string, error) {
 		if wait {
 			sys.waitForUpdate(user, c)
 		}
+	} else {
+		sys.RUnlock()
 	}
 	sys.RLock()
 	defer sys.RUnlock()
 	uinfo, ok = sys.users[user]
 	if !ok || !uinfo.Valid {
-		panic(fmt.Errorf("should be in cache"))
+		log.Printf("all other not load error return not exist")
+		return []string{}, nil
 	}
 	res := make([]string, len(uinfo.Groups))
 	copy(res, uinfo.Groups)
 	return res, nil
-
-	return uinfo.Groups, nil
 }
 
 // there is should have write lock without this func
@@ -463,7 +473,7 @@ func (sys *IAMSys) printDebugInfo() {
 func NewIAMSys(conf *IAMSysConf) *IAMSys {
 	sys := &IAMSys {
 		RWMutex: &sync.RWMutex{},
-		stay: conf.Stay,
+		stay: 30 * time.Second,
 		background: conf.BackGround,
 		backthread: conf.BackGroundThread,
 		negative: conf.Negative,

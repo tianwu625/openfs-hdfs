@@ -3,8 +3,8 @@ package rpc
 import (
 	"log"
 	"context"
-	"fmt"
 	"encoding/hex"
+	"fmt"
 
 	hadoop "github.com/openfs/openfs-hdfs/internal/protocol/hadoop_common"
 	"google.golang.org/protobuf/proto"
@@ -68,15 +68,17 @@ func newContext(client *RpcClient, method string, id int32, m proto.Message) con
 func HandleRpc(client *RpcClient, ops *RpcOperators) {
 	for {
 		rrh := new(hadoop.RpcRequestHeaderProto)
-		log.Printf("clientid %v, id %v", rrh.GetClientId(), rrh.GetCallId())
+		//log.Printf("clientid %v, id %v", rrh.GetClientId(), rrh.GetCallId())
 		rh := new(hadoop.RequestHeaderProto)
 		b, err := ReadRPCHeader(client.Conn, rrh, rh)
 		if err != nil {
 			log.Printf("readHeader fail %v\n", err)
 			break
 		}
-		log.Printf("method %s, protname %s, protocol version %d\n", rh.GetMethodName(),
-			rh.GetDeclaringClassProtocolName(), rh.GetClientProtocolVersion())
+		if rh.GetMethodName() != "sendHeartbeat" {
+			log.Printf("method %s, protname %s, protocol version %d\n", rh.GetMethodName(),
+				rh.GetDeclaringClassProtocolName(), rh.GetClientProtocolVersion())
+		}
 		ms, err := ops.Methods.GetMethod(rh.GetMethodName())
 		if err != nil {
 			panic(err)

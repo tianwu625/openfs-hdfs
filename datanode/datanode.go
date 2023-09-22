@@ -127,6 +127,8 @@ type datanodeConstConf struct {
 	blockSize uint64
 	chunkSize uint64
 	packetSize uint64
+	crcChunkMethod string
+	crcMethod string
 }
 
 type datanodeSys struct {
@@ -614,11 +616,43 @@ const (
 	defaultRetry = uint64(1000)
 )
 
+func parseChunkCrcMethod(core hconf.HadoopConf) string {
+	s := core.ParseChunkCrcMethod()
+	res := ""
+	switch s {
+	case "CRC32":
+		res = "CHECKSUM_CRC32"
+	case "CRC32C":
+		res = "CHECKSUM_CRC32C"
+	default:
+		panic(fmt.Errorf("type %s not support", s))
+	}
+
+	return res
+}
+
+func parseCrcMethod(core hconf.HadoopConf) string {
+	s := core.ParseCrcMethod()
+	res := ""
+	switch s {
+	case "MD5MD5CRC":
+		res = "MD5CRC"
+	case "COMPOSITE_CRC":
+		res = "COMPOSITE_CRC"
+	default:
+		panic(fmt.Errorf("type %s not support", s))
+	}
+
+	return res
+}
+
 func NewDatanodeSys(core hconf.HadoopConf) *datanodeSys {
 	constConf := &datanodeConstConf {
 		blockSize: core.ParseBlockSize(),
 		chunkSize: core.ParseChunkSize(),
 		packetSize: core.ParsePacketSize(),
+		crcChunkMethod: parseChunkCrcMethod(core),
+		crcMethod: parseCrcMethod(core),
 	}
 	conf := &datanodeConf {
 		bandwidth: core.ParseDatanodeBandwidth(),
@@ -696,4 +730,20 @@ func getDefaultPacketSize() uint64 {
 		panic(fmt.Errorf("not init global datanodesys"))
 	}
 	return globalDatanodeSys.constConf.packetSize
+}
+
+func getDefaultChunkCrcMethod() string {
+	if globalDatanodeSys == nil {
+		panic(fmt.Errorf("not init global datanodesys"))
+	}
+
+	return globalDatanodeSys.constConf.crcChunkMethod
+}
+
+func getDefaultCrcMethod() string {
+	if globalDatanodeSys == nil {
+		panic(fmt.Errorf("not init global datanodesys"))
+	}
+
+	return globalDatanodeSys.constConf.crcMethod
 }
