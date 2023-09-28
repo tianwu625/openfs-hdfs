@@ -49,8 +49,8 @@ type opfsMetaCacheEntry struct {
 }
 
 const (
-	DefaultMaxEntries = 1000
-	DefaultLifeTime = 60
+	DefaultMaxEntries = 100000
+	DefaultLifeTime = 600
 )
 
 type opfsMetaCache struct {
@@ -205,7 +205,7 @@ func (c *opfsMetaCache) GetAcl(src string) (opfsHdfsAcl, error) {
 		return opfsHdfsAcl{}, err
 	}
 
-	go c.getCacheEntry(src, true)
+	go c.getCacheEntryWithLock(src)
 
 	return *e.meta.Acl, nil
 }
@@ -225,6 +225,18 @@ func (c *opfsMetaCache) getCacheEntry(src string, withload bool) (*opfsMetaCache
 
 	return e, err
 }
+
+func (c *opfsMetaCache) getCacheEntryWithLock(src string) (*opfsMetaCacheEntry, error) {
+	c.Lock()
+	defer c.Unlock()
+	e, err := c.getValidCacheEntry(src)
+	if err == nil {
+		return e, nil
+	}
+
+	return c.loadCacheEntry(src)
+}
+
 
 func (c *opfsMetaCache) setAcl(src string, acl *opfsHdfsAcl) error {
 	c.Lock()
@@ -297,7 +309,7 @@ func (c *opfsMetaCache) GetNamespaceQuota(src string) (opfsHdfsNamespaceQuota, e
 		return opfsHdfsNamespaceQuota{}, err
 	}
 
-	go c.getCacheEntry(src, true)
+	go c.getCacheEntryWithLock(src)
 
 	return *e.meta.Quota, nil
 }

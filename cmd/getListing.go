@@ -25,7 +25,7 @@ func getListingDec(b []byte) (proto.Message, error) {
 
 func getListing(ctx context.Context, m proto.Message) (proto.Message, error) {
 	req := m.(*hdfs.GetListingRequestProto)
-	log.Printf("src %v\nstart %v\nlocal%v\n", req.GetSrc(), req.GetStartAfter(), req.GetNeedLocation())
+	log.Printf("src %v,start %v,local %v", req.GetSrc(), string(req.GetStartAfter()), req.GetNeedLocation())
 	return opfsGetListing(ctx, req)
 }
 
@@ -115,6 +115,8 @@ func opfsGetListing(ctx context.Context, r *hdfs.GetListingRequestProto) (*hdfs.
 	last := (string)(r.GetStartAfter())
 	needlocal := r.GetNeedLocation()
 	res := new(hdfs.GetListingResponseProto)
+	limitNum := getGlobalConstConf().lsLimit
+	remaining := uint32(0)
 
 	readdirSrc := src
 	//process snapshot name is different for hdfs and openfs
@@ -152,9 +154,14 @@ func opfsGetListing(ctx context.Context, r *hdfs.GetListingRequestProto) (*hdfs.
 	if last != "" {
 		n, err := opfsGetLastPos(entries, last)
 		if err != nil {
-			return res, err
+			entries = make([]os.FileInfo, 0)
+		} else {
+			entries = entries[n+1:]
 		}
-		entries = entries[n+1:]
+	}
+	if len(entries) > limitNum {
+		remaining = uint32(len(entries) - limitNum)
+		entries = entries[:limitNum]
 	}
 	res.DirList = new(hdfs.DirectoryListingProto)
 	dlist := make([]*hdfs.HdfsFileStatusProto, 0, len(entries))
@@ -165,11 +172,11 @@ func opfsGetListing(ctx context.Context, r *hdfs.GetListingRequestProto) (*hdfs.
 				return nil, err
 			}
 		}
-		log.Printf("src %v, d %v", path.Join(readdirSrc, e.Name()), d)
+	//	log.Printf("src %v, d %v", path.Join(readdirSrc, e.Name()), d)
 		dlist = append(dlist, d)
 	}
 	res.DirList.PartialListing = specialProccessReserveDirs(src, dlist)
-	res.DirList.RemainingEntries = proto.Uint32(0)
+	res.DirList.RemainingEntries = proto.Uint32(remaining)
 
 	return res, nil
 }

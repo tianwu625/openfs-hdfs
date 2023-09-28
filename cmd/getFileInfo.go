@@ -28,7 +28,7 @@ func getFileInfoDec(b []byte) (proto.Message, error) {
 
 func getFileInfo(ctx context.Context, m proto.Message) (proto.Message, error) {
 	req := m.(*hdfs.GetFileInfoRequestProto)
-	log.Printf("getFileInfo req %v", req)
+	//log.Printf("getFileInfo req %v", req)
 	return opfsGetFileInfo(req)
 }
 
@@ -72,9 +72,9 @@ func opfsHdfsFileStatus(src string, fi os.FileInfo, res *hdfs.HdfsFileStatusProt
 	}
 	opfs_stat, _ := opfsgetSysInfo(fi)
 
-	perm, setAcl, _ := opfsGetPermWithAcl(src)
+	perm, setAcl, _ := opfsGetPermWithAcl(src, fi)
 
-	log.Printf("getFileInfo perm %o", perm)
+	//log.Printf("getFileInfo perm %o", perm)
 	flag := ProtoFlagNone
 	if setAcl {
 		flag |= ProtoFlagAcl
@@ -93,7 +93,7 @@ func opfsHdfsFileStatus(src string, fi os.FileInfo, res *hdfs.HdfsFileStatusProt
 	res.Blocksize = proto.Uint64(128*1024*1024)
 	res.FileId = proto.Uint64(opfs_stat.Ino)
 	res.Flags = proto.Uint32(flag)
-	log.Printf("fs %v\n", res)
+	//log.Printf("fs %v\n", res)
 	return res
 }
 

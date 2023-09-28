@@ -1,0 +1,29 @@
+[Unit]
+Description=HDFS Server
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+User=root
+Group=root
+
+EnvironmentFile=-/var/lib/openfs/cconf/cur/hdfs
+ExecStart=/sbin/openfs-hdfs
+
+# Let systemd restart this service always
+Restart=always
+
+# Specifies the maximum file descriptor number that can be opened by this process
+LimitNOFILE=1048576
+
+# Specifies the maximum number of threads this process can create
+TasksMax=infinity
+
+# Send KillSingal
+KillSignal=SIGKILL
+KillMode=process
+
+[Install]
+WantedBy=multi-user.target
+
+# Built for ${project.name}-${project.version} (${project.name})

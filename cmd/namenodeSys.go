@@ -50,6 +50,7 @@ type constConf struct {
 	encryptDataTransfer bool
 	trashInterval uint64
 	crcChunkMethod string
+	lsLimit int
 }
 
 type namenodeSys struct {
@@ -184,6 +185,7 @@ func NewNamenodeSys(core hconf.HadoopConf) *namenodeSys {
 			encryptDataTransfer: core.ParseEncryptDataTransfer(),
 			trashInterval: core.ParseTrashInterval(),
 			crcChunkMethod: core.ParseChunkCrcMethod(),
+			lsLimit: core.ParseLsLimit(),
 		},
 	}
 	sys.smm = fsmeta.InitSafeModeManager(

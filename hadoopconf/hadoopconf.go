@@ -721,3 +721,26 @@ const IoFileBufferSize = "io.file.buffer.size"
 func (h HadoopConf) ParseFileBufferSize() uint32 {
 	return h.ParseUint32(IoFileBufferSize)
 }
+
+func (h HadoopConf) ParseInt(key string) int {
+	res, err := strconv.Atoi(h.getValue(key))
+	if err != nil {
+		panic(fmt.Errorf("key %v value %v convert to int fail %v", key, h.getValue(key), err))
+	}
+
+	return res
+}
+
+const (
+	DfsLsLimit = "dfs.ls.limit"
+	DFS_LIST_LIMIT_DEFAULT = 1000
+)
+func (h HadoopConf) ParseLsLimit() int {
+	res := h.ParseInt(DfsLsLimit)
+	if res == 0 ||
+	   res < 0 {
+		   res = DFS_LIST_LIMIT_DEFAULT
+	}
+
+	return res
+}

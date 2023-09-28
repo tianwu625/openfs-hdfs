@@ -1,30 +1,31 @@
 package fsmeta
 
 import (
-	"sync"
-	"path"
-	"os"
-	"time"
-	"net"
-	"math/rand"
-	"fmt"
 	"errors"
+	"fmt"
+	"math/rand"
+	"net"
+	"os"
+	"path"
 	"strings"
+	"sync"
+	"time"
 
 	"github.com/google/uuid"
+	"github.com/openfs/openfs-hdfs/internal/logger"
 	"github.com/openfs/openfs-hdfs/internal/opfsconfig"
 	"github.com/openfs/openfs-hdfs/internal/opfsconstant"
 )
 
 type OpfsHdfsFsMeta struct {
-	Mode string `json:"-"`
+	Mode                 string `json:"-"`
 	RestoreFailedStorage string `json: "restoreFail, omitempty"`
-	AllowSnapshot bool `json: "allowSnapshot, omitempty"`
-	NameSpaceID uint32 `json: "namespaceid, omitempty"`
-	ClusterID string `json: "clusterid, omitempty"`
-	Ctime uint64 `json:"ctime, omitempty"`
-	BlockPool string `json: "blockpool, omitempty"`
-	Layout uint32 `json: "layout, omitempty"`
+	AllowSnapshot        bool   `json: "allowSnapshot, omitempty"`
+	NameSpaceID          uint32 `json: "namespaceid, omitempty"`
+	ClusterID            string `json: "clusterid, omitempty"`
+	Ctime                uint64 `json:"ctime, omitempty"`
+	BlockPool            string `json: "blockpool, omitempty"`
+	Layout               uint32 `json: "layout, omitempty"`
 }
 
 type OpfsHdfsFs struct {
@@ -101,28 +102,27 @@ const (
 	layout335 = uint32(4294967230)
 )
 
-
 var globalFs *OpfsHdfsFs
 
 const (
 	hdfsFsMeta = "fsMeta"
 
-	ModeSafe = "SAFE" //read only
+	ModeSafe   = "SAFE"   //read only
 	ModeNormal = "NORMAL" // read write
 
-	OnValue = "ON"
+	OnValue  = "ON"
 	OffValue = "OFF"
 )
 
 func defaultFsMeta() *OpfsHdfsFsMeta {
-	meta := &OpfsHdfsFsMeta {
-		Mode: ModeNormal,
+	meta := &OpfsHdfsFsMeta{
+		Mode:                 ModeNormal,
 		RestoreFailedStorage: OnValue,
-		AllowSnapshot: false,
-		NameSpaceID: newNameSpaceID(),
-		ClusterID: newClusterID(),
-		Ctime: newCtime(),
-		Layout: layout335,
+		AllowSnapshot:        false,
+		NameSpaceID:          newNameSpaceID(),
+		ClusterID:            newClusterID(),
+		Ctime:                newCtime(),
+		Layout:               layout335,
 	}
 	meta.BlockPool = newBlockPool(meta.Ctime)
 	return meta
@@ -134,7 +134,7 @@ func (fs *OpfsHdfsFs) GetMode() string {
 	return fs.meta.Mode
 }
 
-func (fs *OpfsHdfsFs) SetMode(mode string) error{
+func (fs *OpfsHdfsFs) SetMode(mode string) error {
 	srcFsMeta := path.Join(opfsconstant.HdfsSysDir, hdfsFsMeta)
 	fs.Lock()
 	defer fs.Unlock()
@@ -145,7 +145,6 @@ func (fs *OpfsHdfsFs) SetMode(mode string) error{
 	if err := opfsconfig.SaveToConfig(srcFsMeta, &fs.meta); err != nil {
 		return err
 	}
-
 	return nil
 }
 
@@ -155,7 +154,7 @@ func (fs *OpfsHdfsFs) GetRestoreFailedStorage() string {
 	return fs.meta.RestoreFailedStorage
 }
 
-func (fs *OpfsHdfsFs) SetRestoreFailedStorage(value string) error{
+func (fs *OpfsHdfsFs) SetRestoreFailedStorage(value string) error {
 	srcFsMeta := path.Join(opfsconstant.HdfsSysDir, hdfsFsMeta)
 	fs.Lock()
 	defer fs.Unlock()
@@ -195,15 +194,14 @@ func (fs *OpfsHdfsFs) GetAllowSnapshot() bool {
 func (fs *OpfsHdfsFs) GetMeta() *OpfsHdfsFsMeta {
 	fs.RLock()
 	defer fs.RUnlock()
-	return &OpfsHdfsFsMeta {
-		NameSpaceID:fs.meta.NameSpaceID,
-		ClusterID:fs.meta.ClusterID,
-		Ctime:fs.meta.Ctime,
-		BlockPool:fs.meta.BlockPool,
-		Layout:fs.meta.Layout,
+	return &OpfsHdfsFsMeta{
+		NameSpaceID: fs.meta.NameSpaceID,
+		ClusterID:   fs.meta.ClusterID,
+		Ctime:       fs.meta.Ctime,
+		BlockPool:   fs.meta.BlockPool,
+		Layout:      fs.meta.Layout,
 	}
 }
-
 
 func NewHdfsFs() *OpfsHdfsFs {
 	srcFsMeta := path.Join(opfsconstant.HdfsSysDir, hdfsFsMeta)
@@ -211,6 +209,7 @@ func NewHdfsFs() *OpfsHdfsFs {
 	err := opfsconfig.LoadFromConfig(srcFsMeta, meta)
 	if err != nil {
 		if os.IsNotExist(err) {
+			logger.LogIf(nil, fmt.Errorf("!!!!!new a fsmeta!!!!!"))
 			meta = defaultFsMeta()
 			if err := opfsconfig.SaveToConfig(srcFsMeta, meta); err != nil {
 				return nil
@@ -220,17 +219,20 @@ func NewHdfsFs() *OpfsHdfsFs {
 		}
 	}
 
-	return &OpfsHdfsFs {
-		meta: meta,
+	return &OpfsHdfsFs{
+		meta:    meta,
 		RWMutex: &sync.RWMutex{},
 	}
 }
 
 func InitFsMeta() *OpfsHdfsFs {
 	globalFs = NewHdfsFs()
+	if globalFs == nil {
+		panic(fmt.Errorf("fail to init fsmeta and exit"))
+	}
 	return globalFs
 }
 
-func GetGlobalFsMeta() *OpfsHdfsFs{
+func GetGlobalFsMeta() *OpfsHdfsFs {
 	return globalFs
 }

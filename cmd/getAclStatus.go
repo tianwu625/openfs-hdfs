@@ -252,10 +252,13 @@ func HdfsAclToProto(acl *opfsHdfsAcl, fi os.FileInfo) []*hdfs.AclEntryProto {
 	return res
 }
 
-func opfsGetPermWithAcl(src string) (uint32, bool, error) {
-	fi, _ := getOpfsFileInfo(src)
+func opfsGetPermWithAcl(src string, fi os.FileInfo) (uint32, bool, error) {
+	if fi == nil {
+		fi, _ = getOpfsFileInfo(src)
+	}
 	allPerm := uint32(fi.Mode().Perm())
 	setAcl := false
+	//bottleneck getAcl from opfs file because of not hit cache
 	gmetas := getGlobalMeta()
 	acl, err := gmetas.GetAcl(src)
 	if err != nil {

@@ -160,7 +160,7 @@ func opfsGetFromOpfsFile(src string) (*opfsHdfsMeta, time.Time, error) {
 	if err != nil {
 		return nil, time.Unix(0, 0), err
 	}
-	log.Printf("mask %v acls %v dmask %v dacls %v", mask, acls, dmask, dacls)
+	//log.Printf("mask %v acls %v dmask %v dacls %v", mask, acls, dmask, dacls)
 	meta := &opfsHdfsMeta {
 		Acl:&opfsHdfsAcl {
 			SetMask: false,

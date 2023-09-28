@@ -6,17 +6,34 @@ import (
 	"os"
 	"io"
 	"bytes"
+//	"fmt"
+	"time"
 
 	"github.com/google/uuid"
 	jsoniter "github.com/json-iterator/go"
 	"github.com/openfs/openfs-hdfs/internal/opfs"
 	"github.com/openfs/openfs-hdfs/internal/opfsconstant"
+//	"github.com/openfs/openfs-hdfs/internal/logger"
+)
+
+const (
+	retryCount = 3
+	defaultSleepTime = 100 * time.Millisecond
 )
 
 func LoadFromConfig(src string, object interface{}) error {
-	b, err := opfs.ReadAll(src)
-	if err != nil {
-		return err
+	var b []byte
+	var err error
+	for i := 0; i < retryCount; i++ {
+		b, err = opfs.ReadAll(src)
+		if err == nil {
+			break
+		}
+	//	logger.LogIf(nil, fmt.Errorf("read config %v fail %v and retry", src, err))
+		time.Sleep(defaultSleepTime)
+		if i == retryCount - 1 {
+			return err
+		}
 	}
 	json := jsoniter.ConfigCompatibleWithStandardLibrary
 	if err = json.Unmarshal(b, object); err != nil {
